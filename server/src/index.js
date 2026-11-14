@@ -6,7 +6,8 @@ const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
 const AdmZip = require('adm-zip');
-const { buildDependencyGraph, analyzeDependencyGraph } = require('@cockpit/core');
+const { analyzeWorkspace } = require('@cockpit/core');
+const { indexProvider } = require('./indexer');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -81,14 +82,19 @@ async function cloneRepository(repoUrl, targetDir, timeoutMs = 60000) {
  * ensures temporary directory cleanup in a finally block,
  * and handles pipeline errors with proper HTTP responses.
  */
-function analyzeDirectoryAndRespond(targetDir, res, sourceLabel = 'workspace') {
+async function analyzeDirectoryAndRespond(targetDir, res, sourceLabel = 'workspace') {
+  const controller = new AbortController();
+  const cancel = () => controller.abort();
+  res.once('close', cancel);
+  let indexDir;
   try {
     console.log(`Analyzing repository graph in ${targetDir} (${sourceLabel})...`);
     let graph;
     try {
-      const rawGraph = buildDependencyGraph(targetDir);
-      graph = analyzeDependencyGraph(rawGraph, { rootDir: targetDir });
+      indexDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cockpit-scip-'));
+      graph = await analyzeWorkspace(targetDir, { provideIndex: indexProvider(indexDir), signal: controller.signal });
     } catch (analysisErr) {
+      if (controller.signal.aborted) return;
       console.error(`Analysis error (${sourceLabel}):`, analysisErr);
       return res.status(500).json({
         error: 'Analysis pipeline failed on the provided codebase.'
@@ -96,14 +102,15 @@ function analyzeDirectoryAndRespond(targetDir, res, sourceLabel = 'workspace') {
     }
 
     console.log(`Analysis complete (${sourceLabel}): ${graph.nodes.length} nodes, ${graph.edges.length} edges.`);
-    return res.status(200).json(graph);
+    if (!controller.signal.aborted) return res.status(200).json(graph);
   } finally {
-    if (targetDir && fs.existsSync(targetDir)) {
+    res.off('close', cancel);
+    for (const directory of [targetDir, indexDir]) {
+      if (!directory) continue;
       try {
-        fs.rmSync(targetDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
-        console.log(`Cleaned up temp directory: ${targetDir}`);
+        fs.rmSync(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
       } catch (cleanupErr) {
-        console.error(`Failed to clean up temp dir ${targetDir}:`, cleanupErr);
+        console.error('Failed to clean up analysis directory:', cleanupErr);
       }
     }
   }
@@ -196,6 +203,10 @@ app.post('/api/analyze-upload', (req, res) => {
           error: `Zip contains too many files (${zipEntries.length} > ${MAX_FILE_COUNT} limit).`
         });
       }
+      if (zipEntries.reduce((size, entry) => size + entry.header.size, 0) > MAX_UPLOAD_SIZE) {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+        return res.status(413).json({ error: 'Expanded zip exceeds the maximum size limit.' });
+      }
 
       const normalizedTempDir = path.resolve(tempDir);
 
@@ -204,7 +215,9 @@ app.post('/api/analyze-upload', (req, res) => {
         const entryName = entry.entryName.replace(/\\/g, '/');
 
         // Security check: Zip-slip path traversal guard
-        if (entryName.includes('..') || entryName.startsWith('/') || /^[a-zA-Z]:/.test(entryName)) {
+        if (entryName.split('/').some(part => !part || /[. ]$|[<>:"|?*\x00-\x1f]/.test(part)
+          || /^(con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?:[ .]|$)/i.test(part))
+          || ((entry.attr >>> 16) & 0o170000) === 0o120000) {
           fs.rmSync(tempDir, { recursive: true, force: true });
           return res.status(400).json({ error: 'Malicious path traversal detected in zip archive.' });
         }
@@ -217,7 +230,7 @@ app.post('/api/analyze-upload', (req, res) => {
         }
 
         fs.mkdirSync(path.dirname(targetPath), { recursive: true });
-        fs.writeFileSync(targetPath, entry.getData());
+        fs.writeFileSync(targetPath, entry.getData(), { flag: 'wx' });
       }
     } catch (extractErr) {
       console.error('Failed to extract zip:', extractErr);

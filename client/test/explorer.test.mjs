@@ -10,6 +10,7 @@ const app = require('../../server/src');
 const express = createRequire(require.resolve('../../server/package.json'))('express');
 const fixture = fileURLToPath(new URL('../../core/test/fixtures/function-project/', import.meta.url));
 const cycles = fileURLToPath(new URL('../../core/test/fixtures/analysis-project/', import.meta.url));
+const mixed = fileURLToPath(new URL('../../core/test/fixtures/multilang/', import.meta.url));
 const medium = JSON.parse(readFileSync(new URL('../src/sample-graph-200.json', import.meta.url), 'utf8'));
 const defaultRepo = 'https://github.com/jonschlinkert/is-number';
 let server, browser, url;
@@ -169,7 +170,7 @@ test('compiler-backed upload, call evidence, focus, expansion and file navigatio
   await fn.getByText('Unresolved and ambiguous calls', { exact: false }).click();
   await fn.getByText('Ambiguous', { exact: true }).waitFor();
   assert.equal(await fn.getByText('None recorded.', { exact: true }).count(), 2);
-  await page.getByRole('button', { name: 'Clear focus' }).click();
+  await page.locator('.graph-surface').click({ position: { x: 10, y: 10 } });
   assert.equal(await fn.count(), 0);
   await page.getByRole('button', { name: 'Back to files' }).click();
   await file.getByText('lib/service.ts', { exact: true }).waitFor();
@@ -190,7 +191,7 @@ test('sample, cycle filter, medium cap and canceled layouts', async t => {
   assert.ok((await canvasState(page)).edges.every(edge => edge.classes.includes('cycle')));
   await search(page, 'node1.ts');
   await page.getByRole('complementary', { name: 'File inspector' }).getByText('Circular dependency', { exact: true }).waitFor();
-  await page.getByRole('button', { name: 'Clear focus' }).click();
+  await page.locator('.graph-surface').click({ position: { x: 10, y: 10 } });
   await page.route('**/api/analyze', route => route.fulfill({ json: medium }));
   assert.equal((await analyze(page)).status(), 200);
   await page.getByText('Showing 90 of 200 files.', { exact: false }).waitFor();
@@ -212,6 +213,32 @@ test('sample, cycle filter, medium cap and canceled layouts', async t => {
   await arranged(page);
   assert.equal(await page.locator('.graph-surface canvas').count(), canvases);
   assert.equal(await page.evaluate(() => window.explorerWorkers.active), 0);
+  assert.deepEqual(errors, []);
+});
+
+test('mixed-language local upload displays Go packages and SCIP call evidence', async t => {
+  const { page, errors } = await open(t);
+  const data = await chooseFolder(page, mixed);
+  assert.equal(data.languageCoverage.length, 7);
+  await arranged(page);
+  await page.getByText('Language coverage', { exact: false }).click();
+  await page.getByText('Coverage is limited to compiler-indexed syntax and statically bound targets.', { exact: true }).first().waitFor();
+  await search(page, 'example.com/cockpit-fixture/lib');
+  const pkg = page.getByRole('complementary', { name: 'Package inspector' });
+  await pkg.getByText('Go package', { exact: true }).waitFor();
+  await pkg.getByRole('button', { name: 'Inspect dependency from go/main.go' }).click();
+  await page.getByRole('complementary', { name: 'Dependency inspector' }).getByText('Import sites', { exact: true }).waitFor();
+  await search(page, 'python/pkg/main.py');
+  await page.getByRole('complementary', { name: 'File inspector' }).getByRole('button', { name: 'Explore functions' }).click();
+  await search(page, 'run', /^run\(\).*python\/pkg\/main/);
+  const fn = page.getByRole('complementary', { name: 'Function inspector' });
+  await fn.getByRole('button', { name: /Inspect call to python\/pkg\/helpers.py/ }).click();
+  const evidence = page.getByRole('complementary', { name: 'Call inspector' });
+  const sites = await evidence.locator('.evidence-list li code:first-of-type').allTextContents();
+  assert.deepEqual(sites, ['python/pkg/main.py:4:21–4:29', 'python/pkg/main.py:4:32–4:40']);
+  await page.getByRole('button', { name: 'Back to files' }).click();
+  await page.getByRole('complementary', { name: 'File inspector' }).waitFor();
+  await arranged(page);
   assert.deepEqual(errors, []);
 });
 
@@ -266,7 +293,7 @@ test('explicit expansion adds the next caller and callee level', async t => {
   await page.getByRole('button', { name: 'Expand neighborhood' }).click();
   await arranged(page);
   assert.ok((await canvasState(page)).nodes.some(node => node.id === 'fourth'));
-  await page.getByRole('button', { name: 'Clear focus' }).click();
+  await page.locator('.graph-surface').click({ position: { x: 10, y: 10 } });
   await page.getByText('Search for a function or explore functions from a file.', { exact: true }).waitFor();
   assert.deepEqual(errors, []);
 });

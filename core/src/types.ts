@@ -1,11 +1,19 @@
+export type Language = 'javascript' | 'typescript' | 'python' | 'go' | 'java' | 'c' | 'cpp';
+export type IndexedLanguage = Exclude<Language, 'javascript' | 'typescript'>;
+
 export interface GraphNode {
   id: string;
   path: string;
+  kind?: 'package';
+  name?: string;
+  language?: Language;
 }
 
 export interface GraphEdge {
   from: string;
   to: string;
+  kind?: 'import' | 'include' | 'reference';
+  evidence?: SourceRange[];
 }
 
 export interface DependencyGraph {
@@ -45,7 +53,7 @@ export interface CallableNode {
   name: string;
   qualifiedName: string;
   kind: 'function' | 'arrow' | 'method' | 'static-method' | 'constructor' | 'getter' | 'setter';
-  language: 'javascript' | 'typescript';
+  language: Language;
   file: string;
   declaration: SourceRange;
 }
@@ -86,6 +94,15 @@ export interface AnalyzedGraph extends DependencyGraph {
   analysis: AnalysisResult;
   symbolUsage: SymbolUsageItem[];
   functionGraph: FunctionGraph;
+  languageCoverage?: LanguageCoverage[];
+}
+
+export interface LanguageCoverage {
+  language: Language;
+  root: string;
+  analyzer: string;
+  status: FunctionGraph['coverage'];
+  diagnostics: string[];
 }
 
 export interface AnalysisOptions {

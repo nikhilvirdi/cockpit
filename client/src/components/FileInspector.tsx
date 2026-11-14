@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import type { FunctionGraph, Selection, SourceRange, View } from '../types';
-import { location } from '../graphView';
+import { languageName, location } from '../graphView';
 import type { GraphIndex, ViewEdge, ViewNode } from '../graphView';
 
 interface Props {
@@ -63,10 +63,10 @@ const kindLabels: Record<string, string> = {
 
 function Endpoint({ role, node, onFocus }: { role: string; node: ViewNode; onFocus: Props['onFocus'] }) {
   return (
-    <div className="endpoint">
-      <span className="field-label">{role}</span>
+    <div className="inspector-cell">
+      <span className="cell-label">{role}</span>
       <button type="button" className="node-link" onClick={() => onFocus(node.id)}>
-        <strong>{node.label}</strong><small>{node.detail}</small>
+        <strong>{node.label}</strong><small className="cell-path">{node.detail}</small>
       </button>
     </div>
   );
@@ -82,8 +82,10 @@ export default function FileInspector({
   const to = edge && index.byId.get(edge.target);
   if (!node && (!edge || !from || !to)) return null;
   const functions = view === 'functions';
-  const title = node ? (functions ? 'Function inspector' : 'File inspector')
+  const title = node ? (functions ? 'Function inspector' : node.package ? 'Package inspector' : 'File inspector')
     : (functions ? 'Call inspector' : 'Dependency inspector');
+  const outgoing = node ? (index.outgoing.get(node.id) ?? []) : [];
+  const incoming = node ? (index.incoming.get(node.id) ?? []) : [];
 
   return (
     <aside className="dependency-inspector" aria-label={title}>
@@ -94,28 +96,69 @@ export default function FileInspector({
       <div className="inspector-body">
         {node && (
           <>
-            <div className="inspector-identity">
-              <h3>{node.label}</h3>
+            {node.callable ? (
+              <div className="inspector-grid" aria-label="Function summary">
+                <div className="inspector-cell">
+                  <span className="cell-label">Function</span>
+                  <strong className="cell-value cell-truncate" title={node.label}>{node.label}</strong>
+                </div>
+                <div className="inspector-cell">
+                  <span className="cell-label">Callees</span>
+                  <span className="cell-value cell-count">{outgoing.length}</span>
+                </div>
+                <div className="inspector-cell inspector-cell-path">
+                  <span className="cell-label">Location</span>
+                  <code className="cell-value cell-path" title={node.callable.declaration ? location(node.callable.declaration) : node.file}>
+                    {node.callable.declaration ? location(node.callable.declaration) : node.file}
+                  </code>
+                </div>
+                <div className="inspector-cell">
+                  <span className="cell-label">Callers</span>
+                  <span className="cell-value cell-count">{incoming.length}</span>
+                </div>
+              </div>
+            ) : (
+              <div className="inspector-grid" aria-label="File summary">
+                <div className="inspector-cell">
+                  <span className="cell-label">File</span>
+                  <strong className="cell-value cell-truncate" title={node.label}>{node.label}</strong>
+                </div>
+                <div className="inspector-cell">
+                  <span className="cell-label">Dependencies</span>
+                  <span className="cell-value cell-count">{outgoing.length}</span>
+                </div>
+                <div className="inspector-cell inspector-cell-path">
+                  <span className="cell-label">Location</span>
+                  <code className="cell-value cell-path" title={node.detail}>{node.detail}</code>
+                </div>
+                <div className="inspector-cell">
+                  <span className="cell-label">Dependents</span>
+                  <span className="cell-value cell-count">{incoming.length}</span>
+                </div>
+              </div>
+            )}
+
+            <div className="inspector-meta">
               {node.callable ? (
                 <>
                   <span className="muted">{Object.hasOwn(kindLabels, node.callable.kind) ? kindLabels[node.callable.kind] : 'Callable'}</span>
-                  <Location range={node.callable.declaration} />
-                  {!node.callable.declaration && <code>{node.file}</code>}
+                  {node.language && <span className="muted">{languageName[node.language]}</span>}
                   {canOpenFile(node.file) && <button type="button" className="primary-button" onClick={() => onFile(node.file)}>Open declaration file</button>}
                 </>
               ) : (
                 <>
-                  <code>{node.file}</code>
+                  {node.language && <span className="muted">{languageName[node.language]}{node.package ? ' package' : ''}</span>}
                   {node.cycle && <span className="cycle-note">Circular dependency</span>}
-                  {canExplore && <button type="button" className="primary-button" onClick={() => onFunctions(node.file)}>Explore functions</button>}
+                  {canExplore && !node.package && <button type="button" className="primary-button" onClick={() => onFunctions(node.file)}>Explore functions</button>}
                 </>
               )}
             </div>
+
             <Section title={functions ? 'Direct callees' : 'Direct dependencies'}>
-              <Relations edges={index.outgoing.get(node.id) ?? []} index={index} view={view} onFocus={onFocus} onEdge={onEdge} />
+              <Relations edges={outgoing} index={index} view={view} onFocus={onFocus} onEdge={onEdge} />
             </Section>
             <Section title={functions ? 'Direct callers' : 'Direct dependents'}>
-              <Relations edges={index.incoming.get(node.id) ?? []} index={index} view={view} onFocus={onFocus} onEdge={onEdge} incoming />
+              <Relations edges={incoming} index={index} view={view} onFocus={onFocus} onEdge={onEdge} incoming />
             </Section>
             {moduleCalls.length > 0 && (
               <details className="inspector-details">
@@ -154,11 +197,16 @@ export default function FileInspector({
         )}
         {edge && from && to && (
           <>
-            <div className="inspector-identity">
+            <div className="inspector-grid" aria-label="Edge summary">
               <Endpoint role={functions ? 'Caller' : 'Consumer'} node={from} onFocus={onFocus} />
               <Endpoint role={functions ? 'Callee' : 'Supplier'} node={to} onFocus={onFocus} />
-              {edge.cycle && <span className="cycle-note">Circular dependency</span>}
             </div>
+            {edge.cycle && <span className="cycle-note">Circular dependency</span>}
+            {!edge.call && !!edge.evidence?.length && (
+              <Section title={edge.dependency === 'include' ? 'Include sites' : edge.dependency === 'reference' ? 'Reference sites' : 'Import sites'}>
+                <ul className="evidence-list">{edge.evidence.map((at, i) => <li key={i}><Location range={at} /></li>)}</ul>
+              </Section>
+            )}
             {edge.call ? (
               <Section title={edge.call.kind === 'construct' ? 'Constructor call sites' : 'Call sites'}>
                 {edge.call.sites.length ? (

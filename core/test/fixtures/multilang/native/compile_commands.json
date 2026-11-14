@@ -1,0 +1,27 @@
+[
+  {
+    "arguments": [
+      "gcc",
+      "-std=c11",
+      "-c",
+      "/src/leaf.c"
+    ],
+    "directory": "/src",
+    "file": "/src/leaf.c"
+  },
+  {
+    "arguments": ["gcc", "-std=c11", "-c", "/src/run.c"],
+    "directory": "/src",
+    "file": "/src/run.c"
+  },
+  {
+    "arguments": [
+      "g++",
+      "-std=c++17",
+      "-c",
+      "/src/main.cpp"
+    ],
+    "directory": "/src",
+    "file": "/src/main.cpp"
+  }
+]

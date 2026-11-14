@@ -1,0 +1,30 @@
+
+'
+scip-go0.2.9file:///workspace í
+main.goZPscip-go gomod example.com/cockpit-fixture fixture `example.com/cockpit-fixture`/B`Tscip-go gomod example.com/cockpit-fixture fixture `example.com/cockpit-fixture/lib`/B`Tscip-go gomod example.com/cockpit-fixture fixture `example.com/cockpit-fixture/lib`/B-hVscip-go gomod example.com/cockpit-fixture fixture `example.com/cockpit-fixture`/Run().BR5`Tscip-go gomod example.com/cockpit-fixture fixture `example.com/cockpit-fixture/lib`/Bg[scip-go gomod example.com/cockpit-fixture fixture `example.com/cockpit-fixture/lib`/Leaf().B"`Tscip-go gomod example.com/cockpit-fixture fixture `example.com/cockpit-fixture/lib`/B',g[scip-go gomod example.com/cockpit-fixture fixture `example.com/cockpit-fixture/lib`/Leaf().B-1lXscip-go gomod example.com/cockpit-fixture fixture `example.com/cockpit-fixture`/Recur().B
+Z local 0Blocal 0BdXscip-go gomod example.com/cockpit-fixture fixture `example.com/cockpit-fixture`/Recur().Blocal 0BiWscip-go gomod example.com/cockpit-fixture fixture `example.com/cockpit-fixture`/Runner#B	R	$p\scip-go gomod example.com/cockpit-fixture fixture `example.com/cockpit-fixture`/Runner#Work.B	R	"lZscip-go gomod example.com/cockpit-fixture fixture `example.com/cockpit-fixture`/Dynamic().B
+R
+.local 1B
+cWscip-go gomod example.com/cockpit-fixture fixture `example.com/cockpit-fixture`/Runner#B
+local 1B
+$%h\scip-go gomod example.com/cockpit-fixture fixture `example.com/cockpit-fixture`/Runner#Work.B
+&*m[scip-go gomod example.com/cockpit-fixture fixture `example.com/cockpit-fixture`/Concrete().BR6`Tscip-go gomod example.com/cockpit-fixture fixture `example.com/cockpit-fixture/lib`/B#g[scip-go gomod example.com/cockpit-fixture fixture `example.com/cockpit-fixture/lib`/Worker#B$*nbscip-go gomod example.com/cockpit-fixture fixture `example.com/cockpit-fixture/lib`/Worker#Work().B.2iWscip-go gomod example.com/cockpit-fixture fixture `example.com/cockpit-fixture`/main().B	Rn
+Pscip-go gomod example.com/cockpit-fixture fixture `example.com/cockpit-fixture`/(#2main:"go*package mainŽ
+Wscip-go gomod example.com/cockpit-fixture fixture `example.com/cockpit-fixture`/Runner#(2Runner:)"go*#type Runner interface{ Work() int }†
+\scip-go gomod example.com/cockpit-fixture fixture `example.com/cockpit-fixture`/Runner#Work.(C2Work:"go*func (Runner).Work() intu
+Vscip-go gomod example.com/cockpit-fixture fixture `example.com/cockpit-fixture`/Run().(2Run:"go*func Run() int€
+Xscip-go gomod example.com/cockpit-fixture fixture `example.com/cockpit-fixture`/Recur().(2Recur:"go*func Recur(n int) int‰
+Zscip-go gomod example.com/cockpit-fixture fixture `example.com/cockpit-fixture`/Dynamic().(2Dynamic: "go*func Dynamic(r Runner) int„
+[scip-go gomod example.com/cockpit-fixture fixture `example.com/cockpit-fixture`/Concrete().(2Concrete:"go*func Concrete() intt
+Wscip-go gomod example.com/cockpit-fixture fixture `example.com/cockpit-fixture`/main().(2main:"go*func main()
+local 0(=2n:"go*	var n int"
+local 1(=2r:"go*var r Runner"go0Ü
+
+
+lib\lib.go^Tscip-go gomod example.com/cockpit-fixture fixture `example.com/cockpit-fixture/lib`/Bm[scip-go gomod example.com/cockpit-fixture fixture `example.com/cockpit-fixture/lib`/Leaf().B	Rm[scip-go gomod example.com/cockpit-fixture fixture `example.com/cockpit-fixture/lib`/Worker#BRg[scip-go gomod example.com/cockpit-fixture fixture `example.com/cockpit-fixture/lib`/Worker#Btbscip-go gomod example.com/cockpit-fixture fixture `example.com/cockpit-fixture/lib`/Worker#Work().BR*g[scip-go gomod example.com/cockpit-fixture fixture `example.com/cockpit-fixture/lib`/Leaf().B"&à
+[scip-go gomod example.com/cockpit-fixture fixture `example.com/cockpit-fixture/lib`/Worker#"[
+Wscip-go gomod example.com/cockpit-fixture fixture `example.com/cockpit-fixture`/Runner#(12Worker:"go*type Worker struct{}|
+[scip-go gomod example.com/cockpit-fixture fixture `example.com/cockpit-fixture/lib`/Leaf().(2Leaf:"go*func Leaf() intî
+bscip-go gomod example.com/cockpit-fixture fixture `example.com/cockpit-fixture/lib`/Worker#Work()."`
+\scip-go gomod example.com/cockpit-fixture fixture `example.com/cockpit-fixture`/Runner#Work.(2Work:"go*func (Worker).Work() intp
+Tscip-go gomod example.com/cockpit-fixture fixture `example.com/cockpit-fixture/lib`/(#2lib:"go*package lib"go0

@@ -1,7 +1,7 @@
 import * as path from 'path';
 import { Project, SyntaxKind, Node, ts } from 'ts-morph';
 import { DependencyGraph, GraphEdge, GraphNode, GraphEngineOptions } from './types';
-import { walkDirectory, toPosixPath } from './scanner';
+import { walkDirectory, toPosixPath, SUPPORTED_EXTENSIONS, isSourceFile } from './scanner';
 import { loadTsConfig, loadTsConfigForFile, TsConfigInfo } from './tsconfig';
 import { resolveImportTarget } from './resolver';
 
@@ -79,7 +79,8 @@ export function buildDependencyGraph(targetPath: string, options?: GraphEngineOp
   const rootDir = path.resolve(targetPath);
 
   // Discover source files and retain the project for semantic analysis of the same snapshot.
-  const scannedFiles = walkDirectory(rootDir);
+  const scannedFiles = walkDirectory(rootDir, name => isSourceFile(name) &&
+    SUPPORTED_EXTENSIONS.has(path.extname(name).toLowerCase()));
   const context = createAnalysisProject(rootDir, scannedFiles, options?.tsConfigPath);
   const { project, projectFilesSet, fileConfigs } = context;
 

@@ -1,5 +1,6 @@
 const assert = require('assert');
 const http = require('http');
+const path = require('node:path');
 const AdmZip = require('adm-zip');
 const app = require('../src/index');
 
@@ -117,6 +118,23 @@ async function runTests() {
     assert.ok(invocation.sites.every(site => site.at.file === 'src/index.ts' && site.target.file === 'src/util.ts'));
     console.log('✓ Valid zip upload returned the file cycle, symbol references, and both call sites');
 
+    const mixedZip = new AdmZip();
+    mixedZip.addLocalFolder(path.resolve(__dirname, '../../core/test/fixtures/multilang'));
+    mixedZip.addFile('unindexed/test.py', Buffer.from('def missing(): pass'));
+    mixedZip.addFile('unindexed/pyproject.toml', Buffer.from(''));
+    const mixedForm = new FormData();
+    mixedForm.append('bundle', new Blob([mixedZip.toBuffer()], { type: 'application/zip' }), 'mixed.zip');
+    const mixedResponse = await fetch(`${baseUrl}/api/analyze-upload`, { method: 'POST', body: mixedForm });
+    assert.strictEqual(mixedResponse.status, 200);
+    const mixed = await mixedResponse.json();
+    assert.strictEqual(mixed.languageCoverage.length, 8);
+    assert.ok(mixed.languageCoverage.some(item => item.language === 'python' && item.status === 'unavailable'));
+    assert.ok(mixed.languageCoverage.some(item => item.language === 'python' && item.status === 'partial'));
+    const goPackage = mixed.nodes.find(node => node.kind === 'package');
+    assert.ok(mixed.edges.some(edge => edge.from === 'go/main.go' && edge.to === goPackage?.id));
+    assert.ok(mixed.functionGraph.edges.some(edge => edge.sites.length === 2 && edge.sites[0].at.file === 'python/pkg/main.py'));
+    assert.ok(mixed.nodes.filter(node => !node.kind).every(node => node.id === node.path && !path.isAbsolute(node.path)));
+
     // 9. Upload endpoint: reject zip exceeding file count cap (413)
     const tooManyFilesZip = new AdmZip();
     for (let i = 0; i <= 5000; i++) {
@@ -155,6 +173,13 @@ async function runTests() {
       const oversizedJson = await oversizedRes.json();
       assert.ok(oversizedJson.error.includes('exceeds the maximum size limit'), 'Error message should mention size limit');
       console.log('✓ File size limit cap rejected cleanly (413)');
+      const expandedZip = new AdmZip();
+      expandedZip.addFile('expanded.py', Buffer.alloc(2048, 'x'));
+      const expandedForm = new FormData();
+      expandedForm.append('bundle', new Blob([expandedZip.toBuffer()], { type: 'application/zip' }), 'expanded.zip');
+      const expandedRes = await fetch(`${lowCapUrl}/api/analyze-upload`, { method: 'POST', body: expandedForm });
+      assert.strictEqual(expandedRes.status, 413);
+      assert.match((await expandedRes.json()).error, /Expanded zip/);
     } finally {
       lowCapServer.close();
       if (savedLimit !== undefined) {

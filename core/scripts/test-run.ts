@@ -1,8 +1,8 @@
 import * as path from 'path';
 import * as fs from 'fs';
-import { buildDependencyGraph, analyzeDependencyGraph } from '../src';
+import { analyzeWorkspace } from '../src';
 
-function main() {
+async function main() {
   const args = process.argv.slice(2);
   let inputTarget = '';
   let outputPath = '';
@@ -33,8 +33,7 @@ function main() {
   const startTime = Date.now();
 
   try {
-    const rawGraph = buildDependencyGraph(targetPath);
-    const graph = analyzeDependencyGraph(rawGraph, { rootDir: targetPath });
+    const graph = await analyzeWorkspace(targetPath);
     const duration = Date.now() - startTime;
 
     console.log('\n================ Dependency Graph Summary ================');

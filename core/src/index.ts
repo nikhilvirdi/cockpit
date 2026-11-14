@@ -1,5 +1,7 @@
 export { buildDependencyGraph } from './engine';
 export { analyzeDependencyGraph, detectCycles } from './analysis';
+export { analyzeWorkspace } from './workspace';
+export type { IndexedProject, IndexProvider } from './scip';
 export { traceSymbolUsages, getEnclosingScopeName, isTypeOnlyReference } from './symbolUsage';
 export { resolveImportTarget, tryCandidatePath } from './resolver';
 export { loadTsConfig, loadTsConfigForFile, TsConfigInfo } from './tsconfig';
@@ -18,5 +20,7 @@ export {
   CallEvidence,
   FunctionCallEdge,
   UnresolvedCall,
-  FunctionGraph
+  FunctionGraph,
+  Language,
+  LanguageCoverage
 } from './types';

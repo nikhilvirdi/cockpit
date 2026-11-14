@@ -1,5 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { languageOf, EXCLUDED_DIRECTORIES } from './sourceKinds';
+export { EXCLUDED_DIRECTORIES } from './sourceKinds';
 
 export const SUPPORTED_EXTENSIONS = new Set([
   '.ts',
@@ -12,26 +14,15 @@ export const SUPPORTED_EXTENSIONS = new Set([
   '.cts'
 ]);
 
-export const EXCLUDED_DIRECTORIES = new Set([
-  'node_modules',
-  '.git',
-  'dist',
-  'build'
-]);
-
 export function toPosixPath(filePath: string): string {
   return filePath.replace(/\\/g, '/');
 }
 
 export function isSourceFile(fileName: string): boolean {
-  if (fileName.endsWith('.d.ts') || fileName.endsWith('.d.mts') || fileName.endsWith('.d.cts')) {
-    return false;
-  }
-  const ext = path.extname(fileName).toLowerCase();
-  return SUPPORTED_EXTENSIONS.has(ext);
+  return languageOf(fileName) !== undefined;
 }
 
-export function walkDirectory(dirPath: string): string[] {
+export function walkDirectory(dirPath: string, include = isSourceFile): string[] {
   const results: string[] = [];
   const normalizedDir = path.resolve(dirPath);
 
@@ -51,11 +42,13 @@ export function walkDirectory(dirPath: string): string[] {
       const fullPath = path.join(currentDir, entry.name);
 
       if (entry.isDirectory()) {
-        if (!EXCLUDED_DIRECTORIES.has(entry.name)) {
+          if (!EXCLUDED_DIRECTORIES.has(entry.name.toLowerCase()) &&
+            !(entry.name === 'vendor' && (fs.existsSync(path.join(currentDir, 'go.mod'))
+              || fs.existsSync(path.join(fullPath, 'modules.txt'))))) {
           walk(fullPath);
         }
       } else if (entry.isFile()) {
-        if (isSourceFile(entry.name)) {
+        if (include(entry.name)) {
           results.push(fullPath);
         }
       }

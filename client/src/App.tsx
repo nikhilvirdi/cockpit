@@ -6,7 +6,7 @@ import { filterFileList, walkDirectoryHandle } from './folderScanner';
 import type { FolderHandle, ScannedFile } from './folderScanner';
 import type { GraphData, InputMode, Selection, View } from './types';
 import { analyze, readGraph } from './graphData';
-import { EDGE_LIMIT, edgeKey, indexGraphs, location, NODE_LIMIT, projectGraph } from './graphView';
+import { EDGE_LIMIT, edgeKey, indexGraphs, languageName, location, NODE_LIMIT, projectGraph } from './graphView';
 import Sidebar from './components/Sidebar';
 import FileInspector from './components/FileInspector';
 import './App.css';
@@ -100,8 +100,11 @@ export default function App() {
   }
 
   function select(selection: Selection) {
+    if (!selection) {
+      reset();
+      return;
+    }
     setState(previous => {
-      if (!selection) return { ...previous, selection: null, focus: undefined };
       if (selection.kind === 'node' && index.byId.has(selection.id)) {
         return { ...previous, selection, focus: selection.id };
       }
@@ -260,27 +263,24 @@ export default function App() {
         <Sidebar inputMode={inputMode} loading={!!loading} onInputMode={setInputMode} onAnalyze={analyzeGithub} onFolder={pickFolder}
           view={view} onView={toggleView} search={query} onSearch={setQuery}
           results={results.slice(0, resultLimit)} moreResults={results.length > resultLimit} onFocus={focus}
-          cycles={graph.analysis.cycles} cycle={cycle} onCycle={changeCycle} />
+          cycles={graph.analysis.cycles} cycle={cycle} onCycle={changeCycle}
+          onZoomIn={() => changeZoom(1.25)} onZoomOut={() => changeZoom(0.8)} onFit={() => cyRef.current?.fit(undefined, 28)} />
         <main className="graph-workspace" aria-label={title}>
-          <header className="graph-header">
-            <div className="graph-heading">
-              <div className="workspace-label" title={source.name}>{source.name}</div>
-              <h1>{title}</h1>
-              <div className="graph-context">
-                <span>{view === 'files' ? 'Consumer → supplier' : 'Caller → callee'}</span>
-                {view === 'functions' && functionFile && <code title={functionFile}>{functionFile}</code>}
-              </div>
-            </div>
-            <div className="view-actions">
-              {view === 'functions' && <button type="button" className="quiet-button" onClick={() => switchView('files')}>Back to files</button>}
-              {(state.focus || state.selection || state.depth !== 1 || cycle && view === 'files') &&
-                <button type="button" className="quiet-button" onClick={reset}>Clear focus</button>}
-              {visible.canExpand && <button type="button" className="quiet-button"
-                onClick={() => setState(previous => ({ ...previous, depth: previous.depth + 1 }))}>Expand neighborhood</button>}
-            </div>
-          </header>
+          <h1 className="sr-only">{title}</h1>
 
-      {view === 'functions' && (partial || unavailable) && <div className="coverage">
+          {!!graph.languageCoverage?.length && <div className="coverage">
+            <details>
+              <summary>Language coverage</summary>
+              <div className="coverage-body"><ul className="evidence-list">
+                {graph.languageCoverage.map(item => <li key={item.language + ':' + item.root}>
+                  <strong>{languageName[item.language]} · {item.status}</strong>
+                  <code>{item.root} · {item.analyzer}</code>
+                  {item.diagnostics.map(message => <p key={message}>{message}</p>)}
+                </li>)}
+              </ul></div>
+            </details>
+          </div>}
+          {view === 'functions' && (partial || unavailable) && <div className="coverage">
             <details>
               <summary>{unavailable ? 'Function analysis unavailable' : 'Partial function analysis'}</summary>
               {functionGraph ? <Coverage key={source.revision} graph={functionGraph} /> : <p>Analyze a repository to load callable data.</p>}
@@ -288,7 +288,8 @@ export default function App() {
           </div>}
           {visible.limited && <p className="graph-message" role="status">
             {visible.nodes.length < index.nodes.length
-              ? 'Showing ' + visible.nodes.length + ' of ' + index.nodes.length + (view === 'files' ? ' files.' : ' callables.')
+              ? 'Showing ' + visible.nodes.length + ' of ' + index.nodes.length + (view === 'functions' ? ' callables.'
+                : graph.nodes.some(node => node.kind === 'package') ? ' files and packages.' : ' files.')
               : 'Some relationships are outside this view.'}
             {' '}Use search or the inspector to keep exploring.
           </p>}
@@ -301,17 +302,15 @@ export default function App() {
               <GraphCanvas cyRef={cyRef} nodes={visible.nodes} edges={visible.edges} selection={state.selection}
                 onSelect={select} viewKey={source.revision + ':' + view} />
             </Suspense>
+            {(view === 'functions' || visible.canExpand) && (
+              <div className="view-actions">
+                {view === 'functions' && <button type="button" className="quiet-button" onClick={() => switchView('files')}>Back to files</button>}
+                {visible.canExpand && <button type="button" className="quiet-button"
+                  onClick={() => setState(previous => ({ ...previous, depth: previous.depth + 1 }))}>Expand neighborhood</button>}
+              </div>
+            )}
             {!visible.nodes.length && <div className="graph-empty" role="status">{noGraph}</div>}
-            {visible.nodes.length > 0 && <div className="canvas-tools">
-              <button type="button" className="quiet-button" aria-label="Zoom out" onClick={() => changeZoom(0.8)}>−</button>
-              <button type="button" className="quiet-button" title="Fit visible graph" onClick={() => cyRef.current?.fit(undefined, 28)}>Fit</button>
-              <button type="button" className="quiet-button" aria-label="Zoom in" onClick={() => changeZoom(1.25)}>+</button>
-            </div>}
           </div>
-          {visible.nodes.length > 0 && <div className="graph-legend" aria-label="Graph legend">
-            <span className="legend-dependency">Outgoing</span><span className="legend-dependent">Incoming</span>
-            {view === 'files' && graph.analysis.cycles.length > 0 && <span className="legend-cycle">Circular</span>}
-          </div>}
         </main>
         <FileInspector view={view} index={index} selection={state.selection} unresolved={unresolved}
           canExplore={!!functionGraph && functionGraph.coverage !== 'unavailable'}

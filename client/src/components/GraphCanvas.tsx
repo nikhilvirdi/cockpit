@@ -15,7 +15,7 @@ const styles: StylesheetJson = [
   { selector: 'node', style: {
     label: 'data(label)', shape: 'round-rectangle', width: nodeWidth, height: nodeHeight,
     'background-color': '#161616', 'border-width': 1, 'border-color': '#555555',
-    color: '#f0f0f0', 'font-family': 'Nunito, sans-serif', 'font-size': 12,
+    color: '#f0f0f0', 'font-family': 'Nunito, sans-serif', 'font-size': 19.5,
     'text-valign': 'center', 'text-halign': 'center', 'text-wrap': 'wrap',
     'text-max-width': (nodeWidth - 16) + 'px', 'text-overflow-wrap': 'anywhere',
   } },
@@ -58,12 +58,19 @@ function sameElements(left: Set<string>, right: Set<string>) {
 }
 
 function label(node: ViewNode) {
-  const name = node.label.length > 31 ? node.label.slice(0, 13) + '…' + node.label.slice(-17) : node.label;
-  if (!node.callable) return name;
+  if (!node.callable) {
+    return node.label.length > 24 ? node.label.slice(0, 10) + '…' + node.label.slice(-12) : node.label;
+  }
+  const fnName = node.label.length > 13 ? node.label.slice(0, 6) + '…' + node.label.slice(-6) : node.label;
   const file = node.context ?? basename(node.file);
   const line = node.callable.declaration;
-  return name + '\n' + (file.length > 19 ? file.slice(0, 7) + '…' + file.slice(-11) : file)
-    + (line ? ':' + (line.startLine + 1) + ':' + (line.startColumn + 1) : '');
+  const lineStr = line ? ':' + (line.startLine + 1) : '';
+  let filePart = file + lineStr;
+  if (filePart.length > 13) {
+    filePart = file.slice(0, 5) + '…' + file.slice(-4) + lineStr;
+    if (filePart.length > 13) filePart = filePart.slice(0, 5) + '…' + filePart.slice(-6);
+  }
+  return fnName + '\n' + filePart;
 }
 
 function highlight(cy: Core, selection: Selection, center = true) {
@@ -103,6 +110,9 @@ export default function GraphCanvas({ cyRef, nodes, edges, selection, viewKey, o
   const containerRef = useRef<HTMLDivElement>(null);
   const drawn = useRef({ viewKey: '', ids: new Set<string>(), pending: false });
   const viewports = useRef(new Map<string, Viewport>());
+  const savedPositions = useRef(new Map<string, Map<string, Position>>());
+  const manualPositions = useRef(new Map<string, Position>());
+  const lastRevision = useRef('');
   const [status, setStatus] = useState('');
   const choose = useEffectEvent(onSelect);
   const highlightSelection = useEffectEvent((cy: Core, center: boolean) => highlight(cy, selection, center));
@@ -111,10 +121,12 @@ export default function GraphCanvas({ cyRef, nodes, edges, selection, viewKey, o
     const container = containerRef.current;
     if (!container) return;
     const savedViewports = viewports.current;
+    const savedPosMap = savedPositions.current;
+    const manualPosMap = manualPositions.current;
     let cy: Core;
     try {
       cy = cytoscape({ container, style: styles, layout: { name: 'preset' }, minZoom: 0.035, maxZoom: 3,
-        autoungrabify: true, autounselectify: true, boxSelectionEnabled: false });
+        autoungrabify: false, autounselectify: true, boxSelectionEnabled: false });
     } catch (error) {
       queueMicrotask(() => setStatus('The graph renderer could not start. Use search and the inspector to explore.'));
       console.error('Cockpit renderer initialization failed', error);
@@ -127,15 +139,33 @@ export default function GraphCanvas({ cyRef, nodes, edges, selection, viewKey, o
     };
     const mouseOver = (event: EventObject) => {
       event.target.addClass('hover');
-      container.style.cursor = 'pointer';
+      container.style.cursor = event.target.isNode() ? 'grab' : 'pointer';
     };
     const mouseOut = (event: EventObject) => {
       event.target.removeClass('hover');
       container.style.cursor = '';
     };
+    const grab = (event: EventObject) => {
+      container.style.cursor = 'grabbing';
+      event.target.connectedEdges().removeStyle('curve-style edge-distances segment-weights segment-distances');
+    };
+    const drag = (event: EventObject) => {
+      manualPositions.current.set(event.target.id(), { ...event.target.position() });
+    };
+    const dragFree = (event: EventObject) => {
+      container.style.cursor = event.target.isNode() ? 'grab' : '';
+      manualPositions.current.set(event.target.id(), { ...event.target.position() });
+    };
+    const free = (event: EventObject) => {
+      container.style.cursor = event.target.isNode() ? 'grab' : '';
+    };
     cy.on('tap', tap);
     cy.on('mouseover', 'node, edge', mouseOver);
     cy.on('mouseout', 'node, edge', mouseOut);
+    cy.on('grab', 'node', grab);
+    cy.on('drag', 'node', drag);
+    cy.on('dragfree', 'node', dragFree);
+    cy.on('free', 'node', free);
     const resize = new ResizeObserver(() => {
       const width = cy.width(), height = cy.height();
       cy.resize();
@@ -150,23 +180,41 @@ export default function GraphCanvas({ cyRef, nodes, edges, selection, viewKey, o
       cy.off('tap', tap);
       cy.off('mouseover', 'node, edge', mouseOver);
       cy.off('mouseout', 'node, edge', mouseOut);
+      cy.off('grab', 'node', grab);
+      cy.off('drag', 'node', drag);
+      cy.off('dragfree', 'node', dragFree);
+      cy.off('free', 'node', free);
       cy.destroy();
       cyRef.current = null;
       drawn.current = { viewKey: '', ids: new Set(), pending: false };
       savedViewports.clear();
+      savedPosMap.clear();
+      manualPosMap.clear();
     };
   }, [cyRef]);
 
   useEffect(() => {
     const cy = cyRef.current;
     if (!cy) return;
+    const revision = viewKey.split(':')[0];
+    if (lastRevision.current !== revision) {
+      savedPositions.current.clear();
+      manualPositions.current.clear();
+      lastRevision.current = revision;
+    }
     const previous = drawn.current;
     const sameView = previous.viewKey === viewKey;
     if (!sameView) {
-      const revision = viewKey.split(':')[0];
       if (previous.viewKey.startsWith(revision + ':') && !previous.pending && previous.ids.size) {
         viewports.current.set(previous.viewKey, { zoom: cy.zoom(), pan: { ...cy.pan() }, ids: previous.ids });
-      } else if (!previous.viewKey.startsWith(revision + ':')) viewports.current.clear();
+        const posMap = new Map<string, Position>();
+        cy.nodes().forEach(node => { posMap.set(node.id(), { ...node.position() }); });
+        savedPositions.current.set(previous.viewKey, posMap);
+      } else if (!previous.viewKey.startsWith(revision + ':')) {
+        viewports.current.clear();
+        savedPositions.current.clear();
+        manualPositions.current.clear();
+      }
     }
     const definitions: ElementDefinition[] = [
       ...nodes.map(node => ({
@@ -185,6 +233,23 @@ export default function GraphCanvas({ cyRef, nodes, edges, selection, viewKey, o
     const ids = new Set(definitions.map(element => element.data.id!));
     if (!previous.pending && sameView && sameElements(ids, previous.ids)) return;
 
+    const savedPos = !sameView ? savedPositions.current.get(viewKey) : undefined;
+    const savedVp = !sameView ? viewports.current.get(viewKey) : undefined;
+    if (!previous.pending && savedPos && savedVp && sameElements(ids, savedVp.ids)) {
+      cy.batch(() => {
+        cy.elements().remove();
+        cy.add(definitions);
+        cy.nodes().positions(node => {
+          return manualPositions.current.get(node.id()) ?? savedPos.get(node.id()) ?? { x: 0, y: 0 };
+        });
+      });
+      cy.viewport({ zoom: savedVp.zoom, pan: savedVp.pan });
+      drawn.current = { viewKey, ids, pending: false };
+      highlightSelection(cy, false);
+      setStatus('');
+      return;
+    }
+
     const controller = new AbortController();
     const oldPositions = new Map(cy.nodes().map(node => [node.id(), node.position()]));
     const focus = cy.nodes('.active').first();
@@ -193,7 +258,13 @@ export default function GraphCanvas({ cyRef, nodes, edges, selection, viewKey, o
     cy.batch(() => {
       cy.elements().filter(element => !sameView || !ids.has(element.id())).remove();
       cy.add(definitions.filter(element => cy.getElementById(element.data.id!).empty()));
-      if (!sameView || !previous.ids.size) cy.layout({ name: 'grid', fit: false, avoidOverlap: true, spacingFactor: 1.25 }).run();
+      if (!sameView || !previous.ids.size) {
+        cy.layout({ name: 'grid', fit: false, avoidOverlap: true, spacingFactor: 1.25 }).run();
+        for (const [id, pos] of manualPositions.current) {
+          const n = cy.getElementById(id);
+          if (n.length) n.position(pos);
+        }
+      }
     });
     drawn.current = { viewKey, ids, pending: nodes.length > 0 };
     highlightSelection(cy, false);
@@ -210,12 +281,17 @@ export default function GraphCanvas({ cyRef, nodes, edges, selection, viewKey, o
         ? { x: anchor.x - newAnchor.x, y: anchor.y - newAnchor.y } : { x: 0, y: 0 };
       cy.batch(() => {
         cy.nodes().positions(node => {
+          const manual = manualPositions.current.get(node.id());
+          if (manual) return manual;
           const point = positions.get(node.id())!;
           return { x: point.x + offset.x, y: point.y + offset.y };
         });
         cy.edges().removeStyle('curve-style edge-distances segment-weights segment-distances');
         for (const route of routes) {
           const edge = cy.getElementById(route.id);
+          const sourceManual = manualPositions.current.has(route.sources[0]);
+          const targetManual = manualPositions.current.has(route.targets[0]);
+          if (sourceManual || targetManual) continue;
           const section = route.sections?.[0];
           const start = positions.get(route.sources[0]);
           const end = positions.get(route.targets[0]);
@@ -241,6 +317,10 @@ export default function GraphCanvas({ cyRef, nodes, edges, selection, viewKey, o
       console.error('Cockpit graph layout failed', error);
       cy.edges().removeStyle('curve-style edge-distances segment-weights segment-distances');
       cy.layout({ name: 'grid', fit: false, avoidOverlap: true, spacingFactor: 1.25 }).run();
+      for (const [id, pos] of manualPositions.current) {
+        const n = cy.getElementById(id);
+        if (n.length) n.position(pos);
+      }
       fit(cy);
       drawn.current.pending = false;
       highlightSelection(cy, true);

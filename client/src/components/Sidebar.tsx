@@ -17,19 +17,22 @@ interface Props {
   cycles: string[][];
   cycle: string;
   onCycle: (cycle: string) => void;
+  onZoomIn: () => void;
+  onZoomOut: () => void;
+  onFit: () => void;
 }
 
 export default function Sidebar({
   inputMode, loading, onInputMode, onAnalyze, onFolder, view, onView,
   search, onSearch, results, moreResults, onFocus, cycles, cycle, onCycle,
+  onZoomIn, onZoomOut, onFit,
 }: Props) {
   return (
     <aside className="explorer-sidebar" aria-label="Repository and graph navigation">
-      <details className="source-controls" open>
-        <summary className="source-heading">
-          <img src="/cockpit.svg" alt="Cockpit" />
-          <span>Source</span>
-        </summary>
+      <div className="sidebar-header">
+        <img src="/cockpit.svg" alt="Cockpit" className="sidebar-logo" />
+      </div>
+      <div className="source-controls">
         <div className="source-body">
           <div className="segmented" aria-label="Source type">
             <button type="button" aria-pressed={inputMode === 'github'} onClick={() => onInputMode('github')}>GitHub</button>
@@ -48,7 +51,7 @@ export default function Sidebar({
             <button className="primary-button" type="button" disabled={loading} onClick={onFolder}>Select folder</button>
           )}
         </div>
-      </details>
+      </div>
 
       <div className="explorer-controls">
         <div className="segmented" aria-label="Dependency level">
@@ -78,6 +81,11 @@ export default function Sidebar({
             </select>
           </div>
         )}
+        <div className="sidebar-canvas-tools" aria-label="Graph controls">
+          <button type="button" className="quiet-button" aria-label="Zoom in" title="Zoom in" onClick={onZoomIn}>+</button>
+          <button type="button" className="quiet-button" aria-label="Zoom out" title="Zoom out" onClick={onZoomOut}>−</button>
+          <button type="button" className="quiet-button" title="Fit visible graph" onClick={onFit}>Fit</button>
+        </div>
       </div>
       {search.trim() && (
         <div className="search-results" aria-label="Search results">

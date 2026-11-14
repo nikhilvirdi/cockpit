@@ -1,4 +1,4 @@
-import type { CallableNode, FunctionGraph, GraphData, SourceRange, SymbolUsageItem } from './types';
+import type { CallableNode, FunctionGraph, GraphData, Language, SourceRange, SymbolUsageItem } from './types';
 
 export interface ViewNode {
   id: string;
@@ -8,6 +8,8 @@ export interface ViewNode {
   context?: string;
   callable?: CallableNode;
   cycle?: boolean;
+  package?: boolean;
+  language?: Language;
 }
 
 export interface ViewEdge {
@@ -17,12 +19,17 @@ export interface ViewEdge {
   cycle?: boolean;
   symbols?: SymbolUsageItem[];
   call?: FunctionGraph['edges'][number];
+  dependency?: GraphData['edges'][number]['kind'];
+  evidence?: SourceRange[];
 }
 
 export const EDGE_LIMIT = 260;
 export const NODE_LIMIT = 90;
 export const edgeKey = (from: string, to: string) => JSON.stringify([from, to]);
 export const basename = (file: string) => file.split('/').at(-1) || file;
+export const languageName: Record<Language, string> = {
+  javascript: 'JavaScript', typescript: 'TypeScript', python: 'Python', go: 'Go', java: 'Java', c: 'C', cpp: 'C++'
+};
 
 export function location(range?: SourceRange) {
   if (!range) return 'Location unavailable';
@@ -58,10 +65,13 @@ export function indexGraphs(data: GraphData) {
   const symbols = new Map<string, SymbolUsageItem[]>();
   for (const item of data.symbolUsage) append(symbols, edgeKey(item.usedInFile, item.fromFile), item);
   const files = index(data.nodes.map(node => ({
-    id: node.id, label: basename(node.id), detail: node.id, file: node.id, cycle: cycles.has(node.id),
+    id: node.id, label: node.kind === 'package' ? basename(node.name ?? node.path) : basename(node.id),
+    detail: node.path, file: node.id, cycle: cycles.has(node.id),
+    package: node.kind === 'package', language: node.language,
   })), data.edges.map(edge => {
     const id = edgeKey(edge.from, edge.to);
-    return { id, source: edge.from, target: edge.to, cycle: cycleEdges.has(id), symbols: symbols.get(id) || [] };
+    return { id, source: edge.from, target: edge.to, cycle: cycleEdges.has(id), symbols: symbols.get(id) || [],
+      evidence: edge.evidence, dependency: edge.kind };
   }));
 
   const functionsByFile = new Map<string, string[]>();
@@ -70,7 +80,7 @@ export function indexGraphs(data: GraphData) {
     const line = callable.declaration && ':' + (callable.declaration.startLine + 1);
     return {
       id: callable.id, label: callable.qualifiedName + '()', file: callable.file,
-      detail: callable.file + (line || ''), callable,
+      detail: callable.file + (line || ''), callable, language: callable.language,
     };
   });
   const functionLabels = new Map<string, Set<string>>();
