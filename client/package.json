@@ -7,10 +7,13 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
+    "test": "node test/graphView.test.ts",
+    "test:browser": "node --test test/explorer.test.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
     "cytoscape": "^3.34.3",
+    "elkjs": "^0.12.1",
     "jszip": "^3.10.2",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"

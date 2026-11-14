@@ -309,7 +309,7 @@ ZIP traversal, archive bombs, symlink escape, Git URL option injection, unexpect
 
 #### Renderer and Layout
 
-React 19, TypeScript, and Vite make up the client, with **Cytoscape.js** as the sole renderer. **`cytoscape-elk`** and **`elkjs`** provide a layered layout that fits dependency direction, pending measured compatibility and performance. Stable node placement and legible labels matter more than decorative animation. The layout engine handles spacing rather than a hand-written global collision solver.
+React 19, TypeScript, and Vite make up the client, with **Cytoscape.js** as the sole renderer. **`elkjs`** arranges the visible graph in a browser worker, using layered positioning and routed edges. The client owns the worker lifecycle so it can cancel obsolete layouts and fall back to a grid when layout fails.
 
 The client only lays out the visible subgraph, not thousands of hidden nodes. Search and focus run on adjacency indexes built from the normalized graph. Graph rendering is a projection of immutable analysis data; switching a selection never mutates the underlying dependency evidence.
 
@@ -370,7 +370,7 @@ The reason behind every unresolved relationship or partial analysis needs to be 
 - **`scip-python`**, **`scip-go`**, **`scip-java`**, **`scip-clang`** as language-specific semantic producers, subject to environment and security prerequisites.
 - **`scip-typescript`** as a validated alternative to the existing JS/TS semantic implementation, not a mandatory duplicate of it.
 - **`tree-sitter`** and the Python, Go, Java, C, and C++ grammars for syntax/call-site extraction.
-- **`cytoscape-elk`** and **`elkjs`** for dependency-oriented graph layout.
+- **`elkjs`** for dependency-oriented graph layout.
 - **`yauzl`** for bounded ZIP extraction.
 - **`zod`** for runtime input/contract validation.
 - **`shiki`** for read-only syntax-highlighted evidence snippets.
@@ -384,7 +384,7 @@ The reason behind every unresolved relationship or partial analysis needs to be 
 
 ### Existing Repository Baseline and Compatibility
 
-The current repository has a JS/TS source scanner and resolver, AST-based symbol usage reporting, cycle detection, GitHub and ZIP ingestion routes, and a Cytoscape file graph with a React inspector. The ingestion routes return `nodes`, `edges`, `analysis.cycles`, `symbolUsage`, and `functionGraph` directly. `functionGraph` contains callable nodes, caller-to-callee edges, module-level call evidence, unresolved sites, and coverage diagnostics. Source ranges use repository-relative paths and zero-based UTF-16 line and column offsets with exclusive ends. The function graph view is planned.
+The current repository has a JS/TS source scanner and resolver, AST-based symbol usage reporting, cycle detection, GitHub and ZIP ingestion routes, and two Cytoscape views with a shared React inspector. The ingestion routes return `nodes`, `edges`, `analysis.cycles`, `symbolUsage`, and `functionGraph` directly. `functionGraph` contains callable nodes, caller-to-callee edges, module-level call evidence, unresolved sites, and coverage diagnostics. Source ranges use repository-relative paths and zero-based UTF-16 line and column offsets with exclusive ends. The inspector displays one-based coordinates and preserves the exclusive endpoint.
 
 Existing code gets treated as something to reuse, not a reason to keep removed features alive in the public API. Whatever directly helps dependency correctness stays; data contracts that encode concepts the project has moved past get simplified or replaced. None of this is a wholesale rewrite; any replacement needs a real semantic or usability reason behind it.
 

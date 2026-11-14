@@ -1,286 +1,100 @@
-import type { InputMode, GraphData } from '../types';
+import type { InputMode, View } from '../types';
+import type { ViewNode } from '../graphView';
 
-interface SidebarProps {
-  // Input / analyze
+interface Props {
   inputMode: InputMode;
-  repoUrl: string;
   loading: boolean;
-  onSetInputMode: (mode: InputMode) => void;
-  onSetRepoUrl: (url: string) => void;
-  onAnalyzeGithub: (e?: React.FormEvent) => void;
-  onPickLocalFolder: () => void;
-
-  // Search + filters
-  searchQuery: string;
-  onSetSearchQuery: (q: string) => void;
-  selectedCycleFilter: string;
-  onSetCycleFilter: (v: string) => void;
-  showLegend: boolean;
-  onToggleLegend: () => void;
-  graphData: GraphData;
-
-  // Zoom controls
-  onFit: () => void;
-  onZoomIn: () => void;
-  onZoomOut: () => void;
+  onInputMode: (mode: InputMode) => void;
+  onAnalyze: (url: string) => void;
+  onFolder: () => void;
+  view: View;
+  onView: (view: View) => void;
+  search: string;
+  onSearch: (query: string) => void;
+  results: ViewNode[];
+  moreResults: boolean;
+  onFocus: (id: string) => void;
+  cycles: string[][];
+  cycle: string;
+  onCycle: (cycle: string) => void;
 }
 
 export default function Sidebar({
-  inputMode,
-  repoUrl,
-  loading,
-  onSetInputMode,
-  onSetRepoUrl,
-  onAnalyzeGithub,
-  onPickLocalFolder,
-  searchQuery,
-  onSetSearchQuery,
-  selectedCycleFilter,
-  onSetCycleFilter,
-  showLegend,
-  onToggleLegend,
-  graphData,
-  onFit,
-  onZoomIn,
-  onZoomOut,
-}: SidebarProps) {
+  inputMode, loading, onInputMode, onAnalyze, onFolder, view, onView,
+  search, onSearch, results, moreResults, onFocus, cycles, cycle, onCycle,
+}: Props) {
   return (
-    <aside className="left-sidebar">
-      {/* Brand Logo Header */}
-      <div className="sidebar-brand-container">
-        <img src="/cockpit.svg" alt="Cockpit" className="sidebar-brand-logo" />
-      </div>
-
-      {/* Input Mode: GitHub / Local */}
-      <div className="sidebar-section">
-        <div className="sidebar-section-title">Analyze</div>
-        <div style={{ display: 'flex', background: '#12161C', padding: '2px', border: '1px solid var(--border-default)', borderRadius: '3px', marginBottom: '6px' }}>
-          <button
-            type="button"
-            id="mode-github-tab"
-            onClick={() => onSetInputMode('github')}
-            style={{
-              flex: 1,
-              background: inputMode === 'github' ? '#1C2128' : 'transparent',
-              color: inputMode === 'github' ? '#E8A33D' : '#8B96A5',
-              border: inputMode === 'github' ? '1px solid #E8A33D' : '1px solid transparent',
-              padding: '4px 10px',
-              borderRadius: '3px',
-              fontSize: '11px',
-              fontWeight: inputMode === 'github' ? 500 : 400,
-              cursor: 'pointer',
-              boxShadow: 'none',
-              fontFamily: 'var(--font-data)',
-            }}
-          >
-            GitHub
-          </button>
-          <button
-            type="button"
-            id="mode-folder-tab"
-            onClick={() => onSetInputMode('folder')}
-            style={{
-              flex: 1,
-              background: inputMode === 'folder' ? '#1C2128' : 'transparent',
-              color: inputMode === 'folder' ? '#E8A33D' : '#8B96A5',
-              border: inputMode === 'folder' ? '1px solid #E8A33D' : '1px solid transparent',
-              padding: '4px 10px',
-              borderRadius: '3px',
-              fontSize: '11px',
-              fontWeight: inputMode === 'folder' ? 500 : 400,
-              cursor: 'pointer',
-              boxShadow: 'none',
-              fontFamily: 'var(--font-data)',
-            }}
-          >
-            Local
-          </button>
-        </div>
-
-        {inputMode === 'github' ? (
-          <form onSubmit={onAnalyzeGithub} style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <input
-              id="github-url-input"
-              type="text"
-              value={repoUrl}
-              onChange={(e) => onSetRepoUrl(e.target.value)}
-              placeholder="https://github.com/owner/repo"
-              disabled={loading}
-              style={{
-                width: '100%',
-                boxSizing: 'border-box',
-                background: '#12161C',
-                color: '#8B96A5',
-                border: '1px solid var(--border-default)',
-                borderRadius: '3px',
-                padding: '5px 8px',
-                fontSize: '11px',
-                outline: 'none',
-                fontFamily: 'var(--font-data)',
-                boxShadow: 'none',
-              }}
-            />
-            <button
-              id="analyze-repo-button"
-              type="submit"
-              disabled={loading || !repoUrl.trim()}
-              style={{
-                background: loading ? 'var(--bg-input)' : 'var(--node-bg)',
-                color: loading ? 'var(--text-muted)' : 'var(--text-primary)',
-                border: '1px solid var(--border-default)',
-                borderRadius: 'var(--radius-sm)',
-                padding: '5px 12px',
-                fontSize: '11px',
-                fontWeight: 500,
-                cursor: loading || !repoUrl.trim() ? 'not-allowed' : 'pointer',
-                boxShadow: 'none',
-                width: '100%',
-                fontFamily: 'var(--font-data)',
-              }}
-            >
-              {loading ? 'Analyzing...' : 'Analyze'}
-            </button>
+    <aside className="explorer-sidebar" aria-label="Repository and graph navigation">
+      <details className="source-controls" open>
+        <summary className="source-heading">
+          <img src="/cockpit.svg" alt="Cockpit" />
+          <span>Source</span>
+        </summary>
+        <div className="source-body">
+          <div className="segmented" aria-label="Source type">
+            <button type="button" aria-pressed={inputMode === 'github'} onClick={() => onInputMode('github')}>GitHub</button>
+            <button type="button" aria-pressed={inputMode === 'folder'} onClick={() => onInputMode('folder')}>Local folder</button>
+          </div>
+          <form hidden={inputMode !== 'github'} onSubmit={event => {
+            event.preventDefault();
+            const url = new FormData(event.currentTarget).get('repository');
+            if (typeof url === 'string' && url.trim()) onAnalyze(url.trim());
+          }}>
+            <label className="field-label" htmlFor="github-url-input">Repository URL</label>
+            <input id="github-url-input" name="repository" placeholder="https://github.com/owner/repo" required disabled={loading} />
+            <button className="primary-button" type="submit" disabled={loading}>Analyze repository</button>
           </form>
-        ) : (
-          <button
-            type="button"
-            id="pick-folder-button"
-            onClick={onPickLocalFolder}
-            disabled={loading}
-            style={{
-              background: loading ? 'var(--bg-input)' : 'var(--node-bg)',
-              color: loading ? 'var(--text-muted)' : 'var(--text-primary)',
-              border: '1px solid var(--border-default)',
-              borderRadius: 'var(--radius-sm)',
-              padding: '5px 12px',
-              fontSize: '11px',
-              fontWeight: 500,
-              cursor: loading ? 'not-allowed' : 'pointer',
-              boxShadow: 'none',
-              width: '100%',
-              fontFamily: 'var(--font-data)',
-            }}
-          >
-            {loading ? 'Processing...' : 'Select Folder'}
-          </button>
-        )}
-      </div>
-
-      {/* Search */}
-      <div className="sidebar-section">
-        <div className="sidebar-section-title">Search</div>
-        <div className="search-box">
-          <input
-            id="node-search-input"
-            type="text"
-            placeholder="Filter by file path..."
-            value={searchQuery}
-            onChange={(e) => onSetSearchQuery(e.target.value)}
-          />
-          {searchQuery && (
-            <button
-              type="button"
-              className="clear-search-btn"
-              onClick={() => onSetSearchQuery('')}
-              title="Clear search"
-            >
-              ✕
-            </button>
+          {inputMode === 'folder' && (
+            <button className="primary-button" type="button" disabled={loading} onClick={onFolder}>Select folder</button>
           )}
         </div>
-      </div>
+      </details>
 
-      {/* Cycle Filter */}
-      {graphData.analysis.cycles.length > 0 && (
-        <div className="sidebar-section">
-          <div className="sidebar-section-title">Cycle Filter</div>
-          <select
-            id="cycle-select-filter"
-            className="select-filter"
-            value={selectedCycleFilter}
-            onChange={(e) => onSetCycleFilter(e.target.value)}
-            style={{
-              width: '100%',
-              borderColor: selectedCycleFilter !== 'all' ? 'var(--accent-warning)' : undefined,
-              color: selectedCycleFilter !== 'all' ? 'var(--accent-warning)' : undefined,
-            }}
-          >
-            <option value="all">All Cycles ({graphData.analysis.cycles.length})</option>
-            {graphData.analysis.cycles.map((cycle, idx) => (
-              <option key={idx} value={String(idx)}>
-                Cycle {idx + 1} ({cycle.length} files)
-              </option>
-            ))}
-          </select>
+      <div className="explorer-controls">
+        <div className="segmented" aria-label="Dependency level">
+          <button type="button" aria-pressed={view === 'files'} onClick={() => onView('files')}>Files</button>
+          <button type="button" aria-pressed={view === 'functions'} onClick={() => onView('functions')}>Functions</button>
         </div>
-      )}
-
-      {/* Zoom Controls */}
-      <div className="sidebar-section">
-        <div className="sidebar-section-title">Zoom & View</div>
-        <div style={{ display: 'flex', gap: '4px' }}>
-          <button type="button" className="canvas-btn" onClick={onFit} title="Fit Entire Graph" style={{ flex: 1 }}>
-            Fit
-          </button>
-          <button type="button" className="canvas-btn" onClick={onZoomIn} title="Zoom In" style={{ flex: 1 }}>
-            +
-          </button>
-          <button type="button" className="canvas-btn" onClick={onZoomOut} title="Zoom Out" style={{ flex: 1 }}>
-            −
-          </button>
+        <label className="field-label" htmlFor="node-search-input">
+          {view === 'files' ? 'Search files' : 'Search functions'}
+        </label>
+        <div className="search-input">
+          <input id="node-search-input" type="search" value={search} onChange={event => onSearch(event.target.value)}
+            placeholder={view === 'files' ? 'Filename or path' : 'Name, scope or path'}
+            onKeyDown={event => {
+              if (event.key === 'Enter' && results[0]) onFocus(results[0].id);
+              if (event.key === 'Escape' && search) {
+                event.stopPropagation();
+                onSearch('');
+              }
+            }} />
         </div>
-      </div>
-
-      {/* Legend Toggle & Collapsible Legend */}
-      <div className="sidebar-section">
-        <button
-          type="button"
-          id="toggle-legend-btn"
-          className={`filter-toggle ${showLegend ? 'active' : ''}`}
-          onClick={onToggleLegend}
-          style={{ width: '100%', justifyContent: 'center' }}
-        >
-          {showLegend ? 'Hide Legend' : 'Show Legend'}
-        </button>
-
-        {showLegend && (
-          <div className="sidebar-legend-card" id="sidebar-legend-panel">
-            {/* Nodes Group */}
-            <div className="sidebar-legend-group">
-              <div className="sidebar-legend-title">Nodes</div>
-              <div className="sidebar-legend-grid">
-                <div className="legend-item">
-                  <span className="legend-dot" style={{ background: 'var(--node-bg)', border: '1px solid var(--node-border)', borderRadius: '2px' }} />
-                  <span>Standard</span>
-                </div>
-                <div className="legend-item">
-                  <span className="legend-dot" style={{ background: 'var(--node-bg)', border: '1px solid var(--accent-error)', borderRadius: '2px' }} />
-                  <span>Cycle</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Edges Group */}
-            <div className="sidebar-legend-group">
-              <div className="sidebar-legend-title">Edges</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                <div className="legend-item">
-                  <span className="legend-line" style={{ background: 'var(--accent-info)', height: '1.5px' }} />
-                  <span>Symbol Usage</span>
-                </div>
-                <div className="legend-item">
-                  <span className="legend-line" style={{ borderTop: '1.5px dashed var(--accent-error)' }} />
-                  <span>Cycle</span>
-                </div>
-                <div className="legend-item">
-                  <span className="legend-line" style={{ borderTop: '1.5px dashed var(--text-muted)' }} />
-                  <span>Type-Only / Untraced</span>
-                </div>
-              </div>
-            </div>
+        {view === 'files' && cycles.length > 0 && (
+          <div className="cycle-filter">
+            <label className="field-label" htmlFor="cycle-select-filter">Circular dependencies</label>
+            <select id="cycle-select-filter" value={cycle} onChange={event => onCycle(event.target.value)}>
+              <option value="">All files</option>
+              {cycles.map((ids, i) => <option key={i} value={i}>{ids.length} {ids.length === 1 ? 'file' : 'files'} · {ids[0]}</option>)}
+            </select>
           </div>
         )}
       </div>
+      {search.trim() && (
+        <div className="search-results" aria-label="Search results">
+          {results.length ? (
+            <ul>
+              {results.map(node => (
+                <li key={node.id}>
+                  <button type="button" onClick={() => onFocus(node.id)}>
+                    <strong>{node.label}</strong><small>{node.detail}</small>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : <p role="status">No matches.</p>}
+          {moreResults && <p>Refine your search for more results.</p>}
+        </div>
+      )}
     </aside>
   );
 }

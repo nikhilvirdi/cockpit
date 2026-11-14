@@ -1,5 +1,3 @@
-import JSZip from 'jszip';
-
 const EXCLUDED_DIRS = new Set(['node_modules', '.git', 'dist', 'build', '.cache']);
 
 const ALLOWED_EXTENSIONS = new Set([
@@ -38,8 +36,14 @@ export interface ScannedFile {
   file: File;
 }
 
+export interface FolderHandle {
+  kind: 'directory';
+  name: string;
+  values(): AsyncIterable<FolderHandle | { kind: 'file'; name: string; getFile(): Promise<File> }>;
+}
+
 export async function walkDirectoryHandle(
-  dirHandle: any,
+  dirHandle: FolderHandle,
   currentPath = ''
 ): Promise<ScannedFile[]> {
   const files: ScannedFile[] = [];
@@ -88,18 +92,4 @@ export function filterFileList(fileList: FileList): ScannedFile[] {
   }
 
   return files;
-}
-
-export async function createZipBundle(files: ScannedFile[]): Promise<Blob> {
-  const zip = new JSZip();
-
-  for (const item of files) {
-    zip.file(item.relativePath, item.file);
-  }
-
-  return await zip.generateAsync({
-    type: 'blob',
-    compression: 'DEFLATE',
-    compressionOptions: { level: 6 }
-  });
 }

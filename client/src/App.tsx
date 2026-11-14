@@ -1,380 +1,354 @@
-import { useEffect, useRef, useState, useMemo } from 'react';
+import { lazy, Suspense, useMemo, useRef, useState } from 'react';
+import type { ChangeEvent } from 'react';
 import type { Core } from 'cytoscape';
-import sampleGraphData from './sample-graph.json';
-import {
-  walkDirectoryHandle,
-  filterFileList,
-  createZipBundle,
-  type ScannedFile,
-} from './folderScanner';
-import type {
-  GraphData,
-  SelectedNodeInfo,
-  SelectedEdgeInfo,
-  InputMode,
-  SymbolUsageItem,
-} from './types';
-
+import sampleGraph from './sample-graph.json';
+import { filterFileList, walkDirectoryHandle } from './folderScanner';
+import type { FolderHandle, ScannedFile } from './folderScanner';
+import type { GraphData, InputMode, Selection, View } from './types';
+import { analyze, readGraph } from './graphData';
+import { EDGE_LIMIT, edgeKey, indexGraphs, location, NODE_LIMIT, projectGraph } from './graphView';
 import Sidebar from './components/Sidebar';
-import GraphCanvas from './components/GraphCanvas';
 import FileInspector from './components/FileInspector';
-
 import './App.css';
+
+const GraphCanvas = lazy(() => import('./components/GraphCanvas'));
+const sample = readGraph(sampleGraph);
+const resultLimit = 40;
+const uploadLimit = 50 * 1024 * 1024;
+
+interface Exploration {
+  selection: Selection;
+  focus?: string;
+  depth: number;
+}
+
+const overview: Exploration = { selection: null, depth: 1 };
 
 export default function App() {
   const cyRef = useRef<Core | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
+  const input = useRef<HTMLInputElement>(null);
   const [inputMode, setInputMode] = useState<InputMode>('github');
-  const [graphData, setGraphData] = useState<GraphData>(sampleGraphData);
-  const [repoUrl, setRepoUrl] = useState<string>('');
-  const [loading, setLoading] = useState<boolean>(false);
-  const [loadingStatus, setLoadingStatus] = useState<string>('Cloning & Analyzing...');
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [source, setSource] = useState({ graph: sample, name: 'Sample graph', revision: 0 });
+  const [loading, setLoading] = useState('');
+  const [error, setError] = useState('');
+  const [view, setView] = useState<View>('files');
+  const [query, setQuery] = useState('');
+  const [cycle, setCycle] = useState('');
+  const [fileState, setFileState] = useState<Exploration>(overview);
+  const [functionState, setFunctionState] = useState<Exploration>(overview);
+  const [functionFile, setFunctionFile] = useState<string>();
 
-  // Selection state
-  const [selectedNode, setSelectedNode] = useState<SelectedNodeInfo | null>(null);
-  const [selectedEdge, setSelectedEdge] = useState<SelectedEdgeInfo | null>(null);
+  const { graph } = source;
+  const indexed = useMemo(() => indexGraphs(graph), [graph]);
+  const index = indexed[view];
+  const state = view === 'files' ? fileState : functionState;
+  const setState = view === 'files' ? setFileState : setFunctionState;
+  const functionGraph = graph.functionGraph;
+  const selectedFile = fileState.selection?.kind === 'node' ? fileState.selection.id : undefined;
+  const selectedNode = state.selection?.kind === 'node' ? index.byId.get(state.selection.id) : undefined;
+  const selectedEdge = state.selection?.kind === 'edge' ? index.byEdge.get(state.selection.id) : undefined;
+  const currentCycle = cycle ? graph.analysis.cycles[Number(cycle)] : undefined;
+  const cycleEdges = useMemo(() => currentCycle && new Set(currentCycle.map((id, i) =>
+    edgeKey(id, currentCycle[(i + 1) % currentCycle.length]))), [currentCycle]);
+  const scopedFunctions = functionFile ? indexed.functionsByFile.get(functionFile) : undefined;
+  const large = index.nodes.length > NODE_LIMIT || index.edges.length > EDGE_LIMIT;
 
-  // Filter state
-  const [searchQuery, setSearchQuery] = useState<string>('');
-  const [selectedCycleFilter, setSelectedCycleFilter] = useState<string>('all');
+  const visible = useMemo(() => {
+    const endpoints = selectedEdge ? [selectedEdge.source, selectedEdge.target] : [];
+    if (view === 'files') {
+      const roots = currentCycle ?? (large && state.focus ? [state.focus] : undefined);
+      const priority = currentCycle ? [] : [...endpoints, ...(state.focus ? [state.focus] : [])];
+      return projectGraph(index, roots, state.depth, priority, cycleEdges, selectedEdge?.id);
+    }
+    const roots = [...new Set([
+      ...(state.focus ? [state.focus] : []),
+      ...endpoints,
+      ...(scopedFunctions ?? []),
+    ])];
+    return projectGraph(index, roots, state.depth, roots.slice(0, endpoints.length + (state.focus ? 1 : 0)),
+      undefined, selectedEdge?.id, !!scopedFunctions);
+  }, [view, currentCycle, large, state.focus, state.depth, scopedFunctions, index, selectedEdge, cycleEdges]);
 
-  // UI toggles
-  const [showLegend, setShowLegend] = useState<boolean>(false);
+  const results = useMemo(() => {
+    const match = query.trim().toLowerCase();
+    if (!match) return [];
+    const exact = [], partial = [];
+    for (const node of index.nodes) {
+      const label = node.label.toLowerCase();
+      if (label === match || node.callable?.name.toLowerCase() === match || node.file.toLowerCase() === match) exact.push(node);
+      else if (label.includes(match) || node.detail.toLowerCase().includes(match)) partial.push(node);
+      if (exact.length > resultLimit && partial.length > resultLimit) break;
+    }
+    return [...exact.slice(0, resultLimit + 1), ...partial.slice(0, resultLimit + 1)].slice(0, resultLimit + 1);
+  }, [index, query]);
 
-  // ─── Derived maps ────────────────────────────────────────────────────────
-  const {
-    cycleNodesSet,
-    cycleEdgesSet,
-    incomingMap,
-    outgoingMap,
-    symbolUsageByEdgeMap,
-  } = useMemo(() => {
-    const cycleNodes = new Set<string>(graphData.analysis.cycles.flat());
-    const cycleEdges = new Set<string>();
+  function reset() {
+    setState(overview);
+    setQuery('');
+    if (view === 'files') setCycle('');
+  }
 
-    for (const cycle of graphData.analysis.cycles) {
-      for (let i = 0; i < cycle.length; i++) {
-        const from = cycle[i];
-        const to = cycle[(i + 1) % cycle.length];
-        cycleEdges.add(`${from}->${to}`);
+  function closeInspector() {
+    select(null);
+    requestAnimationFrame(() => document.getElementById('node-search-input')?.focus());
+  }
+
+  function toggleView(next: View) {
+    if (next === 'functions' && view === 'files' && selectedFile && selectedFile !== functionFile) {
+      exploreFunctions(selectedFile);
+    } else switchView(next);
+  }
+
+  function select(selection: Selection) {
+    setState(previous => {
+      if (!selection) return { ...previous, selection: null, focus: undefined };
+      if (selection.kind === 'node' && index.byId.has(selection.id)) {
+        return { ...previous, selection, focus: selection.id };
       }
-    }
+      if (selection.kind === 'edge' && index.byEdge.has(selection.id)) return { ...previous, selection };
+      return previous;
+    });
+  }
 
-    const incoming = new Map<string, string[]>();
-    const outgoing = new Map<string, string[]>();
-    for (const edge of graphData.edges || []) {
-      if (!incoming.has(edge.to)) incoming.set(edge.to, []);
-      incoming.get(edge.to)!.push(edge.from);
-      if (!outgoing.has(edge.from)) outgoing.set(edge.from, []);
-      outgoing.get(edge.from)!.push(edge.to);
-    }
+  function focus(id: string) {
+    if (view === 'files' && currentCycle && !currentCycle.includes(id)) setCycle('');
+    select({ kind: 'node', id });
+  }
 
-    const symbolMap = new Map<string, SymbolUsageItem[]>();
-    for (const item of graphData.symbolUsage) {
-      const edgeKey = `${item.usedInFile}->${item.fromFile}`;
-      if (!symbolMap.has(edgeKey)) symbolMap.set(edgeKey, []);
-      symbolMap.get(edgeKey)!.push(item);
-    }
+  function switchView(next: View) {
+    if (view === next) return;
+    const file = selectedFile;
+    if (next === 'functions' && file && !functionFile) setFunctionFile(file);
+    setQuery('');
+    setView(next);
+  }
 
-    return {
-      cycleNodesSet: cycleNodes,
-      cycleEdgesSet: cycleEdges,
-      incomingMap: incoming,
-      outgoingMap: outgoing,
-      symbolUsageByEdgeMap: symbolMap,
-    };
-  }, [graphData]);
+  function exploreFunctions(file: string, call?: string) {
+    setFunctionFile(file);
+    setFunctionState(call ? { ...overview, selection: { kind: 'edge', id: call } } : overview);
+    setQuery('');
+    setView('functions');
+  }
 
-  // ─── GitHub Analysis ─────────────────────────────────────────────────────
-  const handleAnalyzeGithub = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    const url = repoUrl.trim();
-    if (!url) return;
+  function openFile(file: string) {
+    if (!indexed.files.byId.has(file)) return;
+    setFileState({ ...overview, focus: file, selection: { kind: 'node', id: file } });
+    if (currentCycle && !currentCycle.includes(file)) setCycle('');
+    setQuery('');
+    setView('files');
+  }
 
-    setLoading(true);
-    setLoadingStatus('Cloning & Analyzing GitHub repo...');
-    setErrorMessage(null);
-    setSelectedNode(null);
-    setSelectedEdge(null);
+  function receive(data: GraphData, name: string) {
+    setSource(previous => ({ graph: data, name, revision: previous.revision + 1 }));
+    setView('files');
+    setFileState(overview);
+    setFunctionState(overview);
+    setFunctionFile(undefined);
+    setQuery('');
+    setCycle('');
+  }
 
+  async function analyzeGithub(url: string) {
+    if (loading) return;
+    setLoading('Cloning and analyzing repository…');
+    setError('');
     try {
-      const res = await fetch('/api/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ repoUrl: url }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || `Server error (${res.status})`);
-      setGraphData(data as GraphData);
-      setSelectedCycleFilter('all');
-    } catch (err: any) {
-      setErrorMessage(err.message || 'Failed to analyze repository');
+      const data = await analyze(fetch('/api/analyze', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ repoUrl: url }),
+      }));
+      receive(data, url.replace(/^https:\/\/github\.com\//i, '').replace(/\/$/, ''));
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : 'The repository could not be analyzed.');
     } finally {
-      setLoading(false);
+      setLoading('');
     }
-  };
+  }
 
-  // ─── Local Folder Upload ──────────────────────────────────────────────────
-  const processAndUploadFiles = async (files: ScannedFile[], folderName: string) => {
-    if (files.length === 0) {
-      setErrorMessage('No supported source files (.ts, .tsx, .js, .jsx) found in the selected folder.');
+  async function upload(files: ScannedFile[], name: string) {
+    setError('');
+    try {
+      if (!files.length) throw new Error('No supported source or configuration files were found.');
+      const bytes = files.reduce((total, entry) => total + entry.file.size, 0);
+      if (bytes > uploadLimit) throw new Error('The selected files exceed the 50 MB upload limit.');
+      setLoading('Packaging selected files…');
+      const { createZipBundle } = await import('./zipBundle');
+      const form = new FormData();
+      form.append('bundle', await createZipBundle(files), name + '.zip');
+      setLoading('Analyzing local folder…');
+      receive(await analyze(fetch('/api/analyze-upload', { method: 'POST', body: form })), name);
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : 'The folder could not be analyzed.');
+    } finally {
+      setLoading('');
+    }
+  }
+
+  async function pickFolder() {
+    if (loading) return;
+    const picker = (window as Window & {
+      showDirectoryPicker?: (options: { mode: 'read' }) => Promise<FolderHandle>;
+    }).showDirectoryPicker;
+    if (!picker) return input.current?.click();
+    setLoading('Waiting for folder selection…');
+    setError('');
+    let folder: FolderHandle;
+    try {
+      folder = await picker.call(window, { mode: 'read' });
+    } catch (failure) {
+      setLoading('');
+      if (!(failure instanceof DOMException && failure.name === 'AbortError')) input.current?.click();
       return;
     }
-    const totalBytes = files.reduce((acc, curr) => acc + curr.file.size, 0);
-    const maxBytes = 50 * 1024 * 1024;
-    if (totalBytes > maxBytes) {
-      const sizeMb = (totalBytes / (1024 * 1024)).toFixed(1);
-      setErrorMessage(`Selected source files exceed the 50MB limit (${sizeMb}MB). Please select a smaller folder.`);
-      return;
-    }
-
-    setLoading(true);
-    setErrorMessage(null);
-    setSelectedNode(null);
-    setSelectedEdge(null);
-
+    setLoading('Scanning local folder…');
+    setError('');
     try {
-      setLoadingStatus(`Packaging ${files.length} files (${(totalBytes / 1024).toFixed(0)} KB)...`);
-      const zipBlob = await createZipBundle(files);
-      setLoadingStatus(`Uploading & Analyzing ${folderName}...`);
-      const formData = new FormData();
-      formData.append('bundle', zipBlob, `${folderName}.zip`);
-      const res = await fetch('/api/analyze-upload', { method: 'POST', body: formData });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || `Upload analysis failed (${res.status})`);
-      setGraphData(data as GraphData);
-      setSelectedCycleFilter('all');
-    } catch (err: any) {
-      setErrorMessage(err.message || 'Failed to analyze local folder');
-    } finally {
-      setLoading(false);
+      await upload(await walkDirectoryHandle(folder), folder.name);
+    } catch {
+      setLoading('');
+      setError('The selected folder could not be read.');
     }
-  };
+  }
 
-  const handlePickLocalFolder = async () => {
-    setErrorMessage(null);
-    if ('showDirectoryPicker' in window) {
-      try {
-        const dirHandle = await (window as any).showDirectoryPicker({ mode: 'read' });
-        const folderName = dirHandle.name || 'local-folder';
-        setLoading(true);
-        setLoadingStatus(`Scanning folder ${folderName}...`);
-        const files = await walkDirectoryHandle(dirHandle);
-        await processAndUploadFiles(files, folderName);
-      } catch (err: any) {
-        if (err.name === 'AbortError') return;
-        fileInputRef.current?.click();
-      }
-    } else {
-      fileInputRef.current?.click();
-    }
-  };
+  function folderChanged(event: ChangeEvent<HTMLInputElement>) {
+    const files = event.currentTarget.files;
+    if (!files?.length || loading) return;
+    const name = files[0].webkitRelativePath.split('/')[0] || 'Local folder';
+    const filtered = filterFileList(files);
+    event.currentTarget.value = '';
+    void upload(filtered, name);
+  }
 
-  const handleFallbackInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const fileList = e.target.files;
-    if (!fileList || fileList.length === 0) return;
-    const firstPath = fileList[0].webkitRelativePath || fileList[0].name;
-    const folderName = firstPath.split('/')[0] || 'local-folder';
-    const files = filterFileList(fileList);
-    e.target.value = '';
-    await processAndUploadFiles(files, folderName);
-  };
+  function changeCycle(value: string) {
+    setCycle(value);
+    setFileState(overview);
+  }
 
-  // ─── Graph Navigation (called by inspector panels) ────────────────────────
-  const focusNodeInGraph = (nodeId: string) => {
-    if (cyRef.current) {
-      const node = cyRef.current.getElementById(nodeId);
-      if (node && node.length > 0) {
-        cyRef.current.nodes().unselect();
-        cyRef.current.edges().unselect();
-        node.select();
-        cyRef.current.animate({ center: { eles: node }, zoom: 1.25, duration: 250 });
-        const data = node.data() as SelectedNodeInfo;
-        setSelectedEdge(null);
-        setSelectedNode(data);
-        cyRef.current.batch(() => {
-          cyRef.current!.elements().removeClass('dimmed highlighted-connection highlighted-edge focused neighbor');
-          const outgoingEdges = node.outgoers('edge');
-          const incomingEdges = node.incomers('edge');
-          const directEdges = outgoingEdges.union(incomingEdges);
-          const neighbors = directEdges.connectedNodes().not(node);
+  function setInspection(edge: string) {
+    const relationship = index.byEdge.get(edge);
+    if (currentCycle && relationship && !cycleEdges?.has(edge) && view === 'files') setCycle('');
+    select({ kind: 'edge', id: edge });
+  }
 
-          // Full downstream dependency chain
-          const successors = node.successors();
-          const activeChain = node.union(successors);
-          const activeEdges = activeChain.connectedEdges().filter((e: any) => {
-            return activeChain.contains(e.source()) && activeChain.contains(e.target());
-          });
-          const allActiveEles = activeChain.union(activeEdges).union(neighbors).union(directEdges);
-
-          cyRef.current!.elements().not(allActiveEles).addClass('dimmed');
-          node.addClass('focused');
-          neighbors.addClass('neighbor');
-          activeEdges.union(directEdges).addClass('highlighted-edge');
-        });
-      }
-    }
-  };
-
-  const selectEdgeByKey = (edgeKey: string) => {
-    const symbols = symbolUsageByEdgeMap.get(edgeKey) || [];
-    const [source, target] = edgeKey.split('->');
-    if (!source || !target) return;
-    const isCycle = cycleEdgesSet.has(edgeKey);
-
-    setSelectedNode(null);
-    setSelectedEdge({
-      id: edgeKey,
-      source,
-      target,
-      isCycle,
-      hasTracedSymbols: symbols.length > 0,
-      symbolUsages: symbols,
-    });
-
-    if (cyRef.current) {
-      const edge = cyRef.current.getElementById(edgeKey);
-      cyRef.current.nodes().unselect();
-      cyRef.current.edges().unselect();
-      cyRef.current.elements().removeClass('dimmed highlighted-connection highlighted-edge focused neighbor');
-
-      if (edge && edge.length > 0) {
-        edge.select();
-        cyRef.current.animate({ center: { eles: edge }, duration: 250 });
-      }
-    }
-  };
-
-  // Expose test helper for programmatic evaluation & headless automation
-  useEffect(() => {
-    (window as any).__cockpit = {
-      selectNode: (id: string) => focusNodeInGraph(id),
-      selectEdge: (key: string) => selectEdgeByKey(key),
-      getNodeCount: () => graphData.nodes?.length || 0,
-      getCy: () => cyRef.current,
-    };
-  }, [graphData, cycleEdgesSet, symbolUsageByEdgeMap]);
-
-  // ─── Filter / Search Effect ───────────────────────────────────────────────
-  useEffect(() => {
-    const cy = cyRef.current;
-    if (!cy) return;
-
-    cy.batch(() => {
-      cy.elements().removeClass('highlighted-connection highlighted-edge focused neighbor');
-      cy.elements().removeClass('dimmed search-match');
-
-      if (selectedCycleFilter !== 'all') {
-        const idx = parseInt(selectedCycleFilter, 10);
-        const cycle = graphData.analysis.cycles[idx] || [];
-        const cycleSet = new Set(cycle);
-        const cycleNodes = cy.nodes().filter(n => cycleSet.has(n.id()));
-        const cycleEdges = cy.edges().filter(e => {
-          const s = e.data('source');
-          const t = e.data('target');
-          for (let i = 0; i < cycle.length; i++) {
-            if (cycle[i] === s && cycle[(i + 1) % cycle.length] === t) return true;
-          }
-          return false;
-        });
-        cy.elements().not(cycleNodes.union(cycleEdges)).addClass('dimmed');
-      }
-
-      if (searchQuery.trim()) {
-        const q = searchQuery.trim().toLowerCase();
-        const matchNodes = cy.nodes().filter(n => {
-          const id = n.id().toLowerCase();
-          const label = (n.data('label') || '').toLowerCase();
-          return id.includes(q) || label.includes(q);
-        });
-        matchNodes.addClass('search-match');
-        cy.nodes().not(matchNodes).addClass('dimmed');
-        cy.edges().addClass('dimmed');
-      }
-    });
-  }, [searchQuery, selectedCycleFilter, graphData]);
-
-  // ─── Zoom / Fit Controls ─────────────────────────────────────────────────
-  const handleFit = () => cyRef.current?.fit(undefined, 40);
-  const handleZoomIn = () => cyRef.current && cyRef.current.zoom(cyRef.current.zoom() * 1.25);
-  const handleZoomOut = () => cyRef.current && cyRef.current.zoom(cyRef.current.zoom() * 0.8);
+  const title = view === 'files' ? 'File dependencies' : 'Function calls';
+  const partial = functionGraph?.coverage === 'partial';
+  const unavailable = !functionGraph || functionGraph.coverage === 'unavailable';
+  const noGraph = view === 'files'
+    ? 'No supported source files were found.'
+    : unavailable && !index.nodes.length ? 'Function analysis is unavailable for this result.'
+    : functionFile && !scopedFunctions?.length ? 'No callables were found in this file. Search to explore another file.'
+    : !index.nodes.length ? 'No callable declarations were found.' : 'Search for a function or explore functions from a file.';
+  const callsForEdge = view === 'files' && selectedEdge
+    ? indexed.callsByFilePair.get(edgeKey(selectedEdge.source, selectedEdge.target)) ?? []
+    : [];
+  const unresolved = selectedNode && view === 'functions'
+    ? indexed.unresolvedByCaller.get(selectedNode.id) ?? [] : [];
 
   return (
-    <div className="app-container">
-      {/* Hidden file input for webkitdirectory fallback */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        id="hidden-folder-input"
-        {...({ webkitdirectory: '', directory: '' } as any)}
-        multiple
-        onChange={handleFallbackInputChange}
-        style={{ display: 'none' }}
-      />
-
-      {/* Global Loading / Error Bar */}
-      {loading && (
-        <div style={{ background: '#1C2128', color: '#8B96A5', borderBottom: '1px solid var(--border-default)', padding: '6px 16px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span>{loadingStatus}</span>
-        </div>
-      )}
-      {errorMessage && (
-        <div style={{ background: '#1C2128', color: '#E8A33D', borderBottom: '1px solid #E8A33D', padding: '6px 16px', fontSize: '11px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span>{errorMessage}</span>
-          <button type="button" onClick={() => setErrorMessage(null)} style={{ background: 'transparent', border: 'none', color: '#E8A33D', cursor: 'pointer', fontSize: '13px', padding: '0 4px' }}>
-            ✕
-          </button>
-        </div>
-      )}
-
+    <div className="app-container" onKeyDown={event => {
+      if (event.key === 'Escape' && state.selection) select(null);
+    }}>
+      <input ref={element => {
+        input.current = element;
+        element?.setAttribute('webkitdirectory', '');
+      }} type="file" multiple hidden
+        aria-label="Select a local project folder" onChange={folderChanged} />
+      {loading && <div className="notice" role="status">{loading}</div>}
+      {error && <div className="notice error-notice" role="alert">
+        <span>{error}</span><button type="button" className="quiet-button" onClick={() => setError('')} aria-label="Dismiss error">×</button>
+      </div>}
       <div className="workspace-container">
-        <Sidebar
-          inputMode={inputMode}
-          repoUrl={repoUrl}
-          loading={loading}
-          onSetInputMode={setInputMode}
-          onSetRepoUrl={setRepoUrl}
-          onAnalyzeGithub={handleAnalyzeGithub}
-          onPickLocalFolder={handlePickLocalFolder}
-          searchQuery={searchQuery}
-          onSetSearchQuery={setSearchQuery}
-          selectedCycleFilter={selectedCycleFilter}
-          onSetCycleFilter={setSelectedCycleFilter}
-          showLegend={showLegend}
-          onToggleLegend={() => setShowLegend(p => !p)}
-          graphData={graphData}
-          onFit={handleFit}
-          onZoomIn={handleZoomIn}
-          onZoomOut={handleZoomOut}
-        />
+        <Sidebar inputMode={inputMode} loading={!!loading} onInputMode={setInputMode} onAnalyze={analyzeGithub} onFolder={pickFolder}
+          view={view} onView={toggleView} search={query} onSearch={setQuery}
+          results={results.slice(0, resultLimit)} moreResults={results.length > resultLimit} onFocus={focus}
+          cycles={graph.analysis.cycles} cycle={cycle} onCycle={changeCycle} />
+        <main className="graph-workspace" aria-label={title}>
+          <header className="graph-header">
+            <div className="graph-heading">
+              <div className="workspace-label" title={source.name}>{source.name}</div>
+              <h1>{title}</h1>
+              <div className="graph-context">
+                <span>{view === 'files' ? 'Consumer → supplier' : 'Caller → callee'}</span>
+                {view === 'functions' && functionFile && <code title={functionFile}>{functionFile}</code>}
+              </div>
+            </div>
+            <div className="view-actions">
+              {view === 'functions' && <button type="button" className="quiet-button" onClick={() => switchView('files')}>Back to files</button>}
+              {(state.focus || state.selection || state.depth !== 1 || cycle && view === 'files') &&
+                <button type="button" className="quiet-button" onClick={reset}>Clear focus</button>}
+              {visible.canExpand && <button type="button" className="quiet-button"
+                onClick={() => setState(previous => ({ ...previous, depth: previous.depth + 1 }))}>Expand neighborhood</button>}
+            </div>
+          </header>
 
-        <div style={{ flex: 1, height: '100%', position: 'relative', overflow: 'hidden' }}>
-          <GraphCanvas
-            graphData={graphData}
-            cycleNodesSet={cycleNodesSet}
-            cycleEdgesSet={cycleEdgesSet}
-            incomingMap={incomingMap}
-            outgoingMap={outgoingMap}
-            symbolUsageByEdgeMap={symbolUsageByEdgeMap}
-            onSelectNode={(info) => { setSelectedEdge(null); setSelectedNode(info); }}
-            onSelectEdge={(info) => { setSelectedNode(null); setSelectedEdge(info); }}
-            onDeselect={() => { setSelectedNode(null); setSelectedEdge(null); }}
-            cyRef={cyRef}
-          />
-        </div>
+      {view === 'functions' && (partial || unavailable) && <div className="coverage">
+            <details>
+              <summary>{unavailable ? 'Function analysis unavailable' : 'Partial function analysis'}</summary>
+              {functionGraph ? <Coverage key={source.revision} graph={functionGraph} /> : <p>Analyze a repository to load callable data.</p>}
+            </details>
+          </div>}
+          {visible.limited && <p className="graph-message" role="status">
+            {visible.nodes.length < index.nodes.length
+              ? 'Showing ' + visible.nodes.length + ' of ' + index.nodes.length + (view === 'files' ? ' files.' : ' callables.')
+              : 'Some relationships are outside this view.'}
+            {' '}Use search or the inspector to keep exploring.
+          </p>}
+          {visible.nodes.length > 0 && !visible.edges.length && <p className="graph-message">
+            {view === 'files' ? 'No resolved dependencies in this view.' : 'No resolved calls in this view.'}
+          </p>}
 
-        <FileInspector
-          selectedNode={selectedNode}
-          selectedEdge={selectedEdge}
-          symbolUsageByEdgeMap={symbolUsageByEdgeMap}
-          onCloseNode={() => setSelectedNode(null)}
-          onCloseEdge={() => setSelectedEdge(null)}
-          onFocusNode={focusNodeInGraph}
-          onSelectEdge={selectEdgeByKey}
-        />
+          <div className="canvas-frame">
+            <Suspense fallback={<div className="layout-status" role="status">Loading graph…</div>}>
+              <GraphCanvas cyRef={cyRef} nodes={visible.nodes} edges={visible.edges} selection={state.selection}
+                onSelect={select} viewKey={source.revision + ':' + view} />
+            </Suspense>
+            {!visible.nodes.length && <div className="graph-empty" role="status">{noGraph}</div>}
+            {visible.nodes.length > 0 && <div className="canvas-tools">
+              <button type="button" className="quiet-button" aria-label="Zoom out" onClick={() => changeZoom(0.8)}>−</button>
+              <button type="button" className="quiet-button" title="Fit visible graph" onClick={() => cyRef.current?.fit(undefined, 28)}>Fit</button>
+              <button type="button" className="quiet-button" aria-label="Zoom in" onClick={() => changeZoom(1.25)}>+</button>
+            </div>}
+          </div>
+          {visible.nodes.length > 0 && <div className="graph-legend" aria-label="Graph legend">
+            <span className="legend-dependency">Outgoing</span><span className="legend-dependent">Incoming</span>
+            {view === 'files' && graph.analysis.cycles.length > 0 && <span className="legend-cycle">Circular</span>}
+          </div>}
+        </main>
+        <FileInspector view={view} index={index} selection={state.selection} unresolved={unresolved}
+          canExplore={!!functionGraph && functionGraph.coverage !== 'unavailable'}
+          canOpenFile={file => indexed.files.byId.has(file)} onClose={closeInspector}
+          onFocus={focus} onEdge={setInspection} onFunctions={exploreFunctions} onFile={openFile}
+          callsForEdge={callsForEdge} functions={indexed.functions}
+          moduleCalls={view === 'files' && selectedNode ? indexed.moduleCallsByFile.get(selectedNode.id) ?? [] : []} />
       </div>
+    </div>
+  );
+
+  function changeZoom(factor: number) {
+    const cy = cyRef.current;
+    if (cy) cy.zoom({ level: cy.zoom() * factor, renderedPosition: { x: cy.width() / 2, y: cy.height() / 2 } });
+  }
+}
+
+function Coverage({ graph }: { graph: NonNullable<GraphData['functionGraph']> }) {
+  const [limit, setLimit] = useState(20);
+  const diagnostics = graph.diagnostics;
+  const total = diagnostics.length + graph.unresolved.length;
+  return (
+    <div className="coverage-body">
+      <p>{total
+        ? 'Only resolved calls appear as graph edges. ' + graph.unresolved.length + ' ambiguous or unresolved call sites.'
+        : 'The response contains no further coverage details.'}</p>
+      <ul className="evidence-list">
+        {diagnostics.slice(0, limit).map((item, i) => <li key={'diagnostic-' + i}>
+          <strong>{item.code ? 'TS' + item.code : 'Analysis'}</strong>{item.reason}
+          {item.at && <code>{location(item.at)}</code>}
+        </li>)}
+        {graph.unresolved.slice(0, Math.max(0, limit - diagnostics.length)).map((item, i) => <li key={'call-' + i}>
+          <strong>{item.status === 'ambiguous' ? 'Ambiguous' : 'Unresolved'}</strong>{item.reason}
+          <code>{location(item.at)}</code>
+        </li>)}
+      </ul>
+      {total > limit && <button type="button" className="quiet-button" onClick={() => setLimit(value => value + 20)}>More diagnostics</button>}
     </div>
   );
 }
