@@ -78,7 +78,12 @@ export function readGraph(value: unknown): GraphData {
     && string(edge.to) && nodes.has(edge.to) ? [{
       from: edge.from, to: edge.to,
       kind: edge.kind === 'include' || edge.kind === 'import' || edge.kind === 'reference' ? edge.kind : undefined,
-      evidence: array(edge.evidence).filter(range)
+      evidence: array(edge.evidence).filter(range),
+      additionalEvidence: object(edge.additionalEvidence) ? {
+        import: array(edge.additionalEvidence.import).filter(range),
+        include: array(edge.additionalEvidence.include).filter(range),
+        reference: array(edge.additionalEvidence.reference).filter(range)
+      } : undefined
     } as GraphData['edges'][number]] : []);
   const cycles = array(object(value.analysis) ? value.analysis.cycles : undefined)
     .filter((cycle): cycle is string[] => Array.isArray(cycle) && cycle.length > 0

@@ -21,6 +21,7 @@ export interface ViewEdge {
   call?: FunctionGraph['edges'][number];
   dependency?: GraphData['edges'][number]['kind'];
   evidence?: SourceRange[];
+  additionalEvidence?: GraphData['edges'][number]['additionalEvidence'];
 }
 
 export const EDGE_LIMIT = 260;
@@ -71,7 +72,7 @@ export function indexGraphs(data: GraphData) {
   })), data.edges.map(edge => {
     const id = edgeKey(edge.from, edge.to);
     return { id, source: edge.from, target: edge.to, cycle: cycleEdges.has(id), symbols: symbols.get(id) || [],
-      evidence: edge.evidence, dependency: edge.kind };
+      evidence: edge.evidence, dependency: edge.kind, additionalEvidence: edge.additionalEvidence };
   }));
 
   const functionsByFile = new Map<string, string[]>();

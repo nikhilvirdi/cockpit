@@ -216,29 +216,63 @@ test('sample, cycle filter, medium cap and canceled layouts', async t => {
   assert.deepEqual(errors, []);
 });
 
-test('mixed-language local upload displays Go packages and SCIP call evidence', async t => {
+test('mixed-language local upload reports missing analyzer or shows native dependencies', async t => {
   const { page, errors } = await open(t);
   const data = await chooseFolder(page, mixed);
   assert.equal(data.languageCoverage.length, 7);
   await arranged(page);
   await page.getByText('Language coverage', { exact: false }).click();
-  await page.getByText('Coverage is limited to compiler-indexed syntax and statically bound targets.', { exact: true }).first().waitFor();
-  await search(page, 'example.com/cockpit-fixture/lib');
-  const pkg = page.getByRole('complementary', { name: 'Package inspector' });
-  await pkg.getByText('Go package', { exact: true }).waitFor();
-  await pkg.getByRole('button', { name: 'Inspect dependency from go/main.go' }).click();
-  await page.getByRole('complementary', { name: 'Dependency inspector' }).getByText('Import sites', { exact: true }).waitFor();
+  if (process.env.COCKPIT_ANALYZER_IMAGE) {
+    assert.ok(data.edges.some(edge => edge.from === 'go/main.go' && edge.kind === 'import'));
+    assert.ok(data.edges.some(edge => edge.from === 'java/src/app/Runner.java' && edge.kind === 'import'));
+    await search(page, 'java/src/app/Runner.java');
+    await page.getByRole('button', { name: 'Inspect dependency to java/src/other/Base.java' }).click();
+    const inspector = page.getByRole('complementary', { name: 'Dependency inspector' });
+    await inspector.getByRole('heading', { name: 'Import sites' }).waitFor();
+    await inspector.getByRole('heading', { name: 'Reference sites' }).waitFor();
+    await page.getByRole('button', { name: 'Functions', exact: true }).click();
+    await search(page, 'Runner.text');
+    await page.getByRole('button', { name: /Inspect call to java\/src\/app\/Runner.java/ }).click();
+    const calls = page.getByRole('complementary', { name: 'Call inspector' });
+    await calls.getByText('Target declaration').waitFor();
+    await calls.getByText('Selected overload').waitFor();
+    assert.deepEqual(errors, []);
+    return;
+  }
+  await page.getByText(/Configure the Cockpit native analyzer image/).first().waitFor();
+  assert.ok(!data.nodes.some(node => node.kind === 'package'));
   await search(page, 'python/pkg/main.py');
-  await page.getByRole('complementary', { name: 'File inspector' }).getByRole('button', { name: 'Explore functions' }).click();
-  await search(page, 'run', /^run\(\).*python\/pkg\/main/);
-  const fn = page.getByRole('complementary', { name: 'Function inspector' });
-  await fn.getByRole('button', { name: /Inspect call to python\/pkg\/helpers.py/ }).click();
-  const evidence = page.getByRole('complementary', { name: 'Call inspector' });
-  const sites = await evidence.locator('.evidence-list li code:first-of-type').allTextContents();
-  assert.deepEqual(sites, ['python/pkg/main.py:4:21–4:29', 'python/pkg/main.py:4:32–4:40']);
+  const file = page.getByRole('complementary', { name: 'File inspector' });
+  await file.getByText('Python', { exact: true }).waitFor();
+  await file.getByText('Direct dependencies', { exact: true }).waitFor();
+  assert.equal(await file.getByRole('button', { name: /Inspect dependency/ }).count(), 0);
+  await page.getByRole('button', { name: 'Functions', exact: true }).click();
+  assert.ok(data.functionGraph.nodes.every(node => ['javascript', 'typescript'].includes(node.language)));
   await page.getByRole('button', { name: 'Back to files' }).click();
-  await page.getByRole('complementary', { name: 'File inspector' }).waitFor();
+  await file.waitFor();
   await arranged(page);
+  assert.deepEqual(errors, []);
+});
+
+test('a Java file edge displays import and reference evidence together', async t => {
+  const { page, errors } = await open(t);
+  const from = 'java/Consumer.java';
+  const to = 'java/Supplier.java';
+  const site = { file: from, startColumn: 0, endColumn: 6 };
+  await page.route('**/api/analyze', route => route.fulfill({ json: {
+    nodes: [{ id: from, language: 'java' }, { id: to, language: 'java' }],
+    edges: [{ from, to, kind: 'import', evidence: [{ ...site, startLine: 0, endLine: 0 }],
+      additionalEvidence: { reference: [{ ...site, startLine: 2, endLine: 2 }] } }],
+  } }));
+  assert.equal((await analyze(page)).status(), 200);
+  await search(page, from);
+  await page.getByRole('button', { name: 'Inspect dependency to ' + to }).click();
+  const inspector = page.getByRole('complementary', { name: 'Dependency inspector' });
+  await inspector.getByRole('heading', { name: 'Import sites' }).waitFor();
+  await inspector.getByRole('heading', { name: 'Reference sites' }).waitFor();
+  assert.deepEqual(await inspector.locator('.source-location').allTextContents(), [
+    from + ':1:1–1:7', from + ':3:1–3:7'
+  ]);
   assert.deepEqual(errors, []);
 });
 

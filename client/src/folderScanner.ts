@@ -1,4 +1,4 @@
-import { EXCLUDED_DIRECTORIES, isAnalysisInput } from '../../core/src/sourceKinds';
+import { EXCLUDED_DIRECTORIES, isAnalysisInput } from '../../core/src/sourceKinds.ts';
 
 export interface ScannedFile {
   relativePath: string;
@@ -19,7 +19,15 @@ export async function walkDirectoryHandle(
 
   for await (const entry of dirHandle.values()) {
     if (entry.kind === 'directory') {
-      if (!EXCLUDED_DIRECTORIES.has(entry.name.toLowerCase())) {
+      // CMake normally writes the compilation database under build/. Read only that metadata there.
+      if (entry.name.toLowerCase() === 'build') {
+        for await (const artifact of entry.values()) {
+          if (artifact.kind === 'file' && artifact.name === 'compile_commands.json') {
+            const relativePath = [currentPath, entry.name, artifact.name].filter(Boolean).join('/');
+            files.push({ relativePath, file: await artifact.getFile() });
+          }
+        }
+      } else if (!EXCLUDED_DIRECTORIES.has(entry.name.toLowerCase())) {
         const nextPath = currentPath ? `${currentPath}/${entry.name}` : entry.name;
         const subFiles = await walkDirectoryHandle(entry, nextPath);
         files.push(...subFiles);
@@ -48,7 +56,10 @@ export function filterFileList(fileList: FileList): ScannedFile[] {
     const pathParts = parts.length > 1 ? parts.slice(1) : parts;
 
     const isExcluded = pathParts.slice(0, -1).some(dir => EXCLUDED_DIRECTORIES.has(dir.toLowerCase()));
-    if (isExcluded) continue;
+    const compilationDatabase = pathParts.at(-1) === 'compile_commands.json'
+      && pathParts.at(-2)?.toLowerCase() === 'build'
+      && !pathParts.slice(0, -2).some(dir => EXCLUDED_DIRECTORIES.has(dir.toLowerCase()));
+    if (isExcluded && !compilationDatabase) continue;
 
     const fileName = pathParts[pathParts.length - 1];
     if (isAnalysisInput(fileName)) {

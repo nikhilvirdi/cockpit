@@ -202,11 +202,13 @@ export default function FileInspector({
               <Endpoint role={functions ? 'Callee' : 'Supplier'} node={to} onFocus={onFocus} />
             </div>
             {edge.cycle && <span className="cycle-note">Circular dependency</span>}
-            {!edge.call && !!edge.evidence?.length && (
-              <Section title={edge.dependency === 'include' ? 'Include sites' : edge.dependency === 'reference' ? 'Reference sites' : 'Import sites'}>
-                <ul className="evidence-list">{edge.evidence.map((at, i) => <li key={i}><Location range={at} /></li>)}</ul>
-              </Section>
-            )}
+            {!edge.call && (['import', 'include', 'reference'] as const).map(kind => {
+              const sites = [...((edge.dependency ?? 'import') === kind ? edge.evidence ?? [] : []),
+                ...(edge.additionalEvidence?.[kind] ?? [])];
+              return sites.length > 0 && <Section key={kind} title={{ import: 'Import sites', include: 'Include sites', reference: 'Reference sites' }[kind]}>
+                <ul className="evidence-list">{sites.map((at, i) => <li key={i}><Location range={at} /></li>)}</ul>
+              </Section>;
+            })}
             {edge.call ? (
               <Section title={edge.call.kind === 'construct' ? 'Constructor call sites' : 'Call sites'}>
                 {edge.call.sites.length ? (

@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { readGraph } from '../src/graphData.ts';
+import { filterFileList } from '../src/folderScanner.ts';
 import { edgeKey, indexGraphs, location, NODE_LIMIT, projectGraph } from '../src/graphView.ts';
+
+const selected = ['demo/build/compile_commands.json', 'demo/build/generated.cpp', 'demo/src/main.cpp']
+  .map(webkitRelativePath => ({ webkitRelativePath, name: webkitRelativePath.split('/').at(-1) })) as unknown as FileList;
+assert.deepEqual(filterFileList(selected).map(file => file.relativePath), ['build/compile_commands.json', 'src/main.cpp']);
 
 const fixture = JSON.parse(readFileSync(new URL('../src/sample-graph-200.json', import.meta.url), 'utf8'));
 const large = indexGraphs(readGraph(fixture)).files;
@@ -36,6 +41,14 @@ assert.equal(graph.edges.length, 2);
 assert.equal(indexed.callsByFilePair.get(edgeKey('a.ts', 'nested/b.ts'))?.[0].id, 'ab');
 assert.ok(indexed.files.byEdge.get(edgeKey('a.ts', 'nested/b.ts'))?.cycle);
 assert.equal(indexed.functions.byId.get('A')?.label, indexed.functions.byId.get('B')?.label);
+const dualEvidence = indexGraphs(readGraph({
+  nodes: [{ id: 'a.ts' }, { id: 'b.ts' }],
+  edges: [{ from: 'a.ts', to: 'b.ts', kind: 'import', evidence: [range],
+    additionalEvidence: { reference: [{ ...range, startLine: 1, endLine: 1 }, {}] } }]
+})).files;
+assert.equal(dualEvidence.edges.length, 1);
+assert.deepEqual(dualEvidence.edges[0].evidence, [range]);
+assert.deepEqual(dualEvidence.edges[0].additionalEvidence?.reference, [{ ...range, startLine: 1, endLine: 1 }]);
 assert.notEqual(indexed.functions.byId.get('A')?.detail, indexed.functions.byId.get('B')?.detail);
 const first = projectGraph(indexed.functions, ['A'], 1);
 assert.deepEqual(first.nodes.map(node => node.id), ['A', 'B', 'D']);
