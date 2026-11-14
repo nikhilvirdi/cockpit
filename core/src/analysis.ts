@@ -1,13 +1,12 @@
-import * as fs from 'fs';
 import * as path from 'path';
-import { Project } from 'ts-morph';
 import {
   DependencyGraph,
   AnalyzedGraph,
-  AnalysisOptions,
-  SymbolUsageItem
+  AnalysisOptions
 } from './types';
 import { traceSymbolUsages } from './symbolUsage';
+import { createAnalysisProject, getGraphProject } from './engine';
+import { buildFunctionGraph } from './functionGraph';
 
 /**
  * Detects all elementary cycles in the graph using Johnson's algorithm with Tarjan's SCC.
@@ -187,39 +186,28 @@ export function detectCycles(
 }
 
 /**
- * Adds cycle and symbol-reference evidence to an import dependency graph.
+ * Adds file cycles, symbol references, and callable dependencies to an import graph.
  *
  * @param graph Input dependency graph with { nodes, edges }
  * @param options Optional configuration including rootDir and maxCycles
- * @returns Graph with cycle analysis and symbol usages
+ * @returns Serializable analyzed graph with repository-relative paths
  */
 export function analyzeDependencyGraph(
   graph: DependencyGraph,
   options?: AnalysisOptions
 ): AnalyzedGraph {
-  const { nodes, edges } = graph;
-
-  const rootDir = options?.rootDir ? path.resolve(options.rootDir) : process.cwd();
-  let project: Project = (graph as any)._project;
-
-  if (!project) {
-    project = new Project({
-      skipAddingFilesFromTsConfig: true,
-      compilerOptions: { allowJs: true }
-    });
-    for (const node of nodes) {
-      if (fs.existsSync(node.path)) {
-        project.addSourceFileAtPath(node.path);
-      }
-    }
-  }
-
-  const symbolUsage: SymbolUsageItem[] = traceSymbolUsages(project, nodes, edges, rootDir);
+  const context = getGraphProject(graph);
+  const rootDir = path.resolve(options?.rootDir ?? context?.rootDir ?? process.cwd());
+  const nodes = graph.nodes.map(node => ({ ...node, path: path.resolve(rootDir, node.path) }));
+  const { edges } = graph;
+  const { project, diagnostics, fileConfigs } = context?.rootDir === rootDir
+    ? context : createAnalysisProject(rootDir, nodes.map(node => node.path));
 
   return {
-    nodes,
+    nodes: nodes.map(({ id }) => ({ id, path: id })),
     edges,
     analysis: { cycles: detectCycles(nodes, edges, options?.maxCycles) },
-    symbolUsage
+    symbolUsage: traceSymbolUsages(project, nodes, edges, rootDir, fileConfigs),
+    functionGraph: buildFunctionGraph(project, nodes, rootDir, diagnostics)
   };
 }

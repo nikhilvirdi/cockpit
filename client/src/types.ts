@@ -1,3 +1,5 @@
+import type { AnalyzedGraph } from '../../core/src/types';
+
 // Shared types for Cockpit graph data and UI state
 
 export interface GraphNode {
@@ -29,6 +31,7 @@ export interface GraphData {
   edges: GraphEdge[];
   analysis: AnalysisResult;
   symbolUsage: SymbolUsageItem[];
+  functionGraph?: AnalyzedGraph['functionGraph'];
 }
 
 export interface SelectedNodeInfo {

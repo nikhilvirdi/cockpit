@@ -1,38 +1,68 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { ts } from 'ts-morph';
+import { toPosixPath } from './scanner';
 
 export interface TsConfigInfo {
   configPath?: string;
   baseUrl?: string;
   paths?: Record<string, string[]>;
   compilerOptions: ts.CompilerOptions;
+  diagnostics?: readonly ts.Diagnostic[];
 }
 
-function parseConfigFile(configPath: string): { options: ts.CompilerOptions; references?: readonly ts.ProjectReference[] } | null {
-  try {
-    const configFile = ts.readConfigFile(configPath, ts.sys.readFile);
-    if (configFile.error) {
-      return null;
-    }
-
-    const parsed = ts.parseJsonConfigFileContent(
-      configFile.config,
-      ts.sys,
-      path.dirname(configPath)
-    );
-
-    return {
-      options: parsed.options,
-      references: parsed.projectReferences
-    };
-  } catch {
-    return null;
+function parseConfigFile(configPath: string) {
+  const filename = toPosixPath(configPath);
+  const configFile = ts.readConfigFile(filename, ts.sys.readFile);
+  if (configFile.error) {
+    return { options: {}, references: undefined, diagnostics: [configFile.error] };
   }
+
+  const parsed = ts.parseJsonConfigFileContent(
+    configFile.config,
+    ts.sys,
+    path.dirname(configPath),
+    undefined,
+    filename
+  );
+  return {
+    options: parsed.options,
+    references: parsed.projectReferences,
+    // Cockpit discovers source files independently of the config's include/exclude lists.
+    diagnostics: parsed.errors.filter(error => error.code !== 18002 && error.code !== 18003)
+  };
 }
 
-// Cache for tsconfig lookups by directory to avoid repeated file system checks
+// A root analysis clears these caches so separate snapshots can change configuration.
 const tsconfigCache = new Map<string, TsConfigInfo>();
+const configFileCache = new Map<string, TsConfigInfo>();
+
+const configNames = ['tsconfig.json', 'jsconfig.json', 'tsconfig.app.json', 'tsconfig.base.json'];
+
+function readConfig(configPath: string): TsConfigInfo {
+  const cached = configFileCache.get(configPath);
+  if (cached) return cached;
+
+  const parsed = parseConfigFile(configPath);
+  const diagnostics = [...parsed.diagnostics];
+  const compilerOptions = { ...parsed.options };
+  let { baseUrl, paths } = compilerOptions;
+
+  // Keep the existing workspace fallback for aliases referenced by a solution config.
+  for (const ref of parsed.references ?? []) {
+    const refPath = path.resolve(path.dirname(configPath), ref.path);
+    const filename = fs.statSync(refPath, { throwIfNoEntry: false })?.isDirectory()
+      ? path.join(refPath, 'tsconfig.json') : refPath;
+    const referenced = parseConfigFile(filename);
+    diagnostics.push(...referenced.diagnostics);
+    baseUrl ??= referenced.options.baseUrl;
+    if (referenced.options.paths) paths = { ...paths, ...referenced.options.paths };
+  }
+
+  const result = { configPath, baseUrl, paths, compilerOptions, diagnostics };
+  configFileCache.set(configPath, result);
+  return result;
+}
 
 /**
  * Find the nearest tsconfig.json or jsconfig.json by walking up from the given directory.
@@ -44,96 +74,30 @@ export function findNearestTsConfig(startDir: string, rootDir: string): TsConfig
   const normalizedRoot = path.resolve(rootDir);
 
   // Check cache first
-  if (tsconfigCache.has(normalizedStart)) {
-    return tsconfigCache.get(normalizedStart)!;
+  const cacheKey = JSON.stringify([normalizedRoot, normalizedStart]);
+  const cached = tsconfigCache.get(cacheKey);
+  if (cached) {
+    return cached;
   }
 
   let currentDir = normalizedStart;
   let foundConfigPath: string | undefined;
 
   // Walk up from startDir to rootDir looking for tsconfig/jsconfig
-  while (currentDir.startsWith(normalizedRoot)) {
-    const candidates = [
-      path.join(currentDir, 'tsconfig.json'),
-      path.join(currentDir, 'jsconfig.json'),
-      path.join(currentDir, 'tsconfig.app.json'),
-      path.join(currentDir, 'tsconfig.base.json')
-    ];
-
-    for (const candidate of candidates) {
-      if (fs.existsSync(candidate)) {
-        foundConfigPath = candidate;
-        break;
-      }
-    }
-
-    if (foundConfigPath) break;
-
-    // Move up one directory
+  for (;;) {
+    const relative = path.relative(normalizedRoot, currentDir);
+    if (relative === '..' || relative.startsWith('..' + path.sep) || path.isAbsolute(relative)) break;
+    foundConfigPath = configNames.map(name => path.join(currentDir, name)).find(candidate => fs.existsSync(candidate));
+    if (foundConfigPath || currentDir === normalizedRoot) break;
     const parentDir = path.dirname(currentDir);
-    if (parentDir === currentDir) break; // Reached filesystem root
+    if (parentDir === currentDir) break;
     currentDir = parentDir;
   }
 
-  // If no config found, try root level
-  if (!foundConfigPath) {
-    const rootCandidates = [
-      path.join(normalizedRoot, 'tsconfig.json'),
-      path.join(normalizedRoot, 'jsconfig.json')
-    ];
-    
-    for (const candidate of rootCandidates) {
-      if (fs.existsSync(candidate)) {
-        foundConfigPath = candidate;
-        break;
-      }
-    }
-  }
-
-  let compilerOptions: ts.CompilerOptions = {};
-  let paths: Record<string, string[]> | undefined;
-  let baseUrl: string | undefined;
-
-  if (foundConfigPath) {
-    const parsed = parseConfigFile(foundConfigPath);
-    if (parsed) {
-      compilerOptions = { ...parsed.options };
-      baseUrl = parsed.options.baseUrl;
-      paths = parsed.options.paths;
-
-      // Handle project references
-      if (parsed.references && parsed.references.length > 0) {
-        for (const ref of parsed.references) {
-          const refPath = path.resolve(path.dirname(foundConfigPath), ref.path);
-          const actualRefPath = fs.statSync(refPath, { throwIfNoEntry: false })?.isDirectory()
-            ? path.join(refPath, 'tsconfig.json')
-            : refPath;
-
-          if (fs.existsSync(actualRefPath)) {
-            const refParsed = parseConfigFile(actualRefPath);
-            if (refParsed) {
-              if (refParsed.options.baseUrl && !baseUrl) {
-                baseUrl = refParsed.options.baseUrl;
-              }
-              if (refParsed.options.paths) {
-                paths = { ...(paths || {}), ...refParsed.options.paths };
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-
-  const result: TsConfigInfo = {
-    configPath: foundConfigPath,
-    baseUrl,
-    paths,
-    compilerOptions
-  };
+  const result = foundConfigPath ? readConfig(foundConfigPath) : { compilerOptions: {} };
 
   // Cache the result
-  tsconfigCache.set(normalizedStart, result);
+  tsconfigCache.set(cacheKey, result);
 
   return result;
 }
@@ -152,76 +116,25 @@ export function loadTsConfigForFile(filePath: string, rootDir: string): TsConfig
  * Kept for backward compatibility and global config needs.
  */
 export function loadTsConfig(targetDir: string, explicitConfigPath?: string): TsConfigInfo {
-  // Clear cache when loading root config
   tsconfigCache.clear();
+  configFileCache.clear();
 
-  const candidateConfigs: string[] = [];
+  if (explicitConfigPath) return readConfig(path.resolve(explicitConfigPath));
 
-  if (explicitConfigPath) {
-    candidateConfigs.push(path.resolve(explicitConfigPath));
-  } else {
-    candidateConfigs.push(
-      path.join(targetDir, 'tsconfig.json'),
-      path.join(targetDir, 'jsconfig.json'),
-      path.join(targetDir, 'tsconfig.app.json'),
-      path.join(targetDir, 'tsconfig.base.json')
-    );
-  }
-
-  let primaryConfigPath: string | undefined;
-  let compilerOptions: ts.CompilerOptions = {};
-  let paths: Record<string, string[]> | undefined;
-  let baseUrl: string | undefined;
-
-  for (const candidate of candidateConfigs) {
-    if (fs.existsSync(candidate)) {
-      const parsed = parseConfigFile(candidate);
-      if (parsed) {
-        primaryConfigPath = primaryConfigPath || candidate;
-        compilerOptions = { ...compilerOptions, ...parsed.options };
-
-        if (parsed.options.baseUrl && !baseUrl) {
-          baseUrl = parsed.options.baseUrl;
-        }
-
-        if (parsed.options.paths) {
-          paths = { ...(paths || {}), ...parsed.options.paths };
-        }
-
-        // Check project references (e.g. Vite's tsconfig.app.json)
-        if (parsed.references && parsed.references.length > 0) {
-          for (const ref of parsed.references) {
-            const refPath = path.resolve(path.dirname(candidate), ref.path);
-            const actualRefPath = fs.statSync(refPath, { throwIfNoEntry: false })?.isDirectory()
-              ? path.join(refPath, 'tsconfig.json')
-              : refPath;
-
-            if (fs.existsSync(actualRefPath)) {
-              const refParsed = parseConfigFile(actualRefPath);
-              if (refParsed) {
-                if (refParsed.options.baseUrl && !baseUrl) {
-                  baseUrl = refParsed.options.baseUrl;
-                }
-                if (refParsed.options.paths) {
-                  paths = { ...(paths || {}), ...refParsed.options.paths };
-                }
-              }
-            }
-          }
-        }
-
-        // If we found paths, we can stop searching fallback files
-        if (paths && Object.keys(paths).length > 0) {
-          break;
-        }
-      }
+  const diagnostics: ts.Diagnostic[] = [];
+  const result: TsConfigInfo = { compilerOptions: {}, diagnostics };
+  for (const name of configNames) {
+    const candidate = path.join(targetDir, name);
+    if (!fs.existsSync(candidate)) continue;
+    const config = readConfig(candidate);
+    result.configPath ??= candidate;
+    result.baseUrl ??= config.baseUrl;
+    Object.assign(result.compilerOptions, config.compilerOptions);
+    diagnostics.push(...(config.diagnostics ?? []));
+    if (config.paths && Object.keys(config.paths).length > 0) {
+      result.paths = config.paths;
+      break;
     }
   }
-
-  return {
-    configPath: primaryConfigPath,
-    baseUrl,
-    paths,
-    compilerOptions
-  };
+  return result;
 }

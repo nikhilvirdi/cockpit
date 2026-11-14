@@ -118,7 +118,7 @@ Tree-sitter gives syntax, not type checking or project-aware symbol resolution. 
 
 `ts-morph` and the underlying TypeScript compiler project model stay as the primary JS/TS implementation. It already supports project-aware import resolution and AST access. It resolves relative paths, `tsconfig` aliases, workspace boundaries, barrel re-exports, named/default/namespace imports, CommonJS `require`, and relevant type-only references, without conflating types with calls.
 
-The existing `symbolUsage.ts` already identifies imported symbol references and their enclosing scopes. That needs extending into call-site classification and target binding. A variable reference, an imported type, a callback argument, a property read, or a re-export is not a function call. Same-file calls, aliases, arrow functions, class methods, constructors, and cross-file calls all get handled wherever resolution is supported.
+The existing `symbolUsage.ts` identifies imported references and their enclosing scopes. `functionGraph.ts` shares the same compiler project, classifies actual call expressions, and binds defensible targets to their declarations. Call edges group every site for a caller and callee. Overload evidence preserves the compiler-selected signature and the implementation location.
 
 **`scip-typescript`** is a credible alternative semantic producer and a compatibility target for the common SCIP adapter. It needs validating against the existing `ts-morph` results before substituting it in for a working resolution path. Both shouldn't run as mandatory duplicate passes over every JS/TS repository.
 
@@ -384,7 +384,7 @@ The reason behind every unresolved relationship or partial analysis needs to be 
 
 ### Existing Repository Baseline and Compatibility
 
-The current repository has a JS/TS source scanner and resolver, AST-based symbol usage reporting, cycle detection, GitHub and ZIP ingestion routes, and a Cytoscape graph with a React inspector. The file graph uses consumer-to-supplier direction. The ingestion routes currently return `nodes`, `edges`, `analysis.cycles`, and `symbolUsage` directly. Verified function-to-function call analysis is planned.
+The current repository has a JS/TS source scanner and resolver, AST-based symbol usage reporting, cycle detection, GitHub and ZIP ingestion routes, and a Cytoscape file graph with a React inspector. The ingestion routes return `nodes`, `edges`, `analysis.cycles`, `symbolUsage`, and `functionGraph` directly. `functionGraph` contains callable nodes, caller-to-callee edges, module-level call evidence, unresolved sites, and coverage diagnostics. Source ranges use repository-relative paths and zero-based UTF-16 line and column offsets with exclusive ends. The function graph view is planned.
 
 Existing code gets treated as something to reuse, not a reason to keep removed features alive in the public API. Whatever directly helps dependency correctness stays; data contracts that encode concepts the project has moved past get simplified or replaced. None of this is a wholesale rewrite; any replacement needs a real semantic or usability reason behind it.
 

@@ -36,9 +36,11 @@ export default function FileInspector({
             <div className="card-value" style={{ fontWeight: 600, color: 'var(--accent-info)', fontFamily: 'var(--font-mono)' }}>
               {selectedNode.id}
             </div>
-            <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-              {selectedNode.fullPath}
-            </div>
+            {selectedNode.fullPath !== selectedNode.id && (
+              <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                {selectedNode.fullPath}
+              </div>
+            )}
             {selectedNode.isCycle && <span className="metric-pill danger">Cycle Member</span>}
           </div>
 

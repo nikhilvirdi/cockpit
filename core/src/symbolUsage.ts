@@ -3,14 +3,14 @@ import {
   Project,
   Node,
   SyntaxKind,
-  SourceFile,
+  ts,
   PropertyAccessExpression,
   ElementAccessExpression
 } from 'ts-morph';
 import { GraphNode, GraphEdge, SymbolUsageItem } from './types';
 import { toPosixPath } from './scanner';
 import { resolveImportTarget } from './resolver';
-import { loadTsConfig } from './tsconfig';
+import type { TsConfigInfo } from './tsconfig';
 
 /**
  * Determines the nearest enclosing named scope for an AST node:
@@ -101,19 +101,11 @@ export function isTypeOnlyReference(refNode: Node, isTypeOnlyImport: boolean): b
 }
 
 /**
- * Finds all references to an AST identifier node within the project/source file.
+ * Finds references bound to the same compiler symbol in the source file.
  */
-function findNodeReferences(node: Node, sourceFile: SourceFile): Node[] {
-  try {
-    if ('findReferencesAsNodes' in node && typeof (node as any).findReferencesAsNodes === 'function') {
-      return (node as any).findReferencesAsNodes();
-    }
-  } catch {
-    // fallback to identifier matching
-  }
-  return sourceFile
-    .getDescendantsOfKind(SyntaxKind.Identifier)
-    .filter(i => i.getText() === node.getText());
+function findNodeReferences(node: Node, references: ReadonlyMap<ts.Symbol, Node[]>): Node[] {
+  const symbol = node.getSymbol()?.compilerSymbol;
+  return symbol ? references.get(symbol) ?? [] : [];
 }
 
 /**
@@ -123,9 +115,9 @@ export function traceSymbolUsages(
   project: Project,
   nodes: GraphNode[],
   edges: GraphEdge[],
-  rootDir: string
+  rootDir: string,
+  fileConfigs?: ReadonlyMap<string, TsConfigInfo>
 ): SymbolUsageItem[] {
-  const tsConfigInfo = loadTsConfig(rootDir);
   const projectFilesSet = new Set(nodes.map(n => path.resolve(n.path)));
 
   const nodeMap = new Map<string, GraphNode>();
@@ -135,6 +127,8 @@ export function traceSymbolUsages(
 
   const usages: SymbolUsageItem[] = [];
   const visitedKeySet = new Set<string>();
+  const referencesByFile = new Map<string, Map<ts.Symbol, Node[]>>();
+  const checker = project.getTypeChecker().compilerObject;
 
   function recordUsage(item: SymbolUsageItem) {
     const key = `${item.fromFile}::${item.usedInFile}::${item.importedSymbol}::${item.usedInScope}::${item.line}::${item.typeOnly}`;
@@ -155,6 +149,24 @@ export function traceSymbolUsages(
     const sourceFileA = project.getSourceFile(consumerNode.path);
     if (!sourceFileA) continue;
 
+    let references = referencesByFile.get(fromFile);
+    if (!references) {
+      references = new Map<ts.Symbol, Node[]>();
+      for (const identifier of sourceFileA.getDescendantsOfKind(SyntaxKind.Identifier)) {
+        const parent = identifier.getParent();
+        const symbol = parent && Node.isShorthandPropertyAssignment(parent) && identifier === parent.getNameNode()
+          ? checker.getShorthandAssignmentValueSymbol(parent.compilerNode)
+          : parent && Node.isExportSpecifier(parent)
+            ? identifier === parent.getNameNode() ? checker.getExportSpecifierLocalTargetSymbol(parent.compilerNode) : undefined
+            : identifier.getSymbol()?.compilerSymbol;
+        if (!symbol) continue;
+        const group = references.get(symbol) ?? [];
+        group.push(identifier);
+        references.set(symbol, group);
+      }
+      referencesByFile.set(fromFile, references);
+    }
+
     // 1. Process Import Declarations
     for (const importDecl of sourceFileA.getImportDeclarations()) {
       const specifier = importDecl.getModuleSpecifierValue();
@@ -164,7 +176,7 @@ export function traceSymbolUsages(
         rootDir,
         fromFilePath: consumerNode.path,
         specifier,
-        tsConfigInfo,
+        tsConfigInfo: fileConfigs?.get(path.resolve(consumerNode.path)),
         projectFilesSet
       });
 
@@ -180,7 +192,7 @@ export function traceSymbolUsages(
         const idNode = namedImport.getAliasNode() || namedImport.getNameNode();
         const isTypeOnly = isTypeOnlyDecl || namedImport.isTypeOnly();
 
-        const refs = findNodeReferences(idNode, sourceFileA);
+        const refs = findNodeReferences(idNode, references);
 
         for (const ref of refs) {
           if (ref.getSourceFile() !== sourceFileA) continue;
@@ -224,7 +236,7 @@ export function traceSymbolUsages(
         const idNode = defaultImport;
         const isTypeOnly = isTypeOnlyDecl;
 
-        const refs = findNodeReferences(idNode, sourceFileA);
+        const refs = findNodeReferences(idNode, references);
 
         for (const ref of refs) {
           if (ref.getSourceFile() !== sourceFileA) continue;
@@ -251,7 +263,7 @@ export function traceSymbolUsages(
         const idNode = nsImport;
         const isTypeOnly = isTypeOnlyDecl;
 
-        const refs = findNodeReferences(idNode, sourceFileA);
+        const refs = findNodeReferences(idNode, references);
 
         for (const ref of refs) {
           if (ref.getSourceFile() !== sourceFileA) continue;
@@ -333,7 +345,7 @@ export function traceSymbolUsages(
         rootDir,
         fromFilePath: consumerNode.path,
         specifier,
-        tsConfigInfo,
+        tsConfigInfo: fileConfigs?.get(path.resolve(consumerNode.path)),
         projectFilesSet
       });
 

@@ -1,9 +1,72 @@
 import * as path from 'path';
-import { Project, SyntaxKind, Node } from 'ts-morph';
+import { Project, SyntaxKind, Node, ts } from 'ts-morph';
 import { DependencyGraph, GraphEdge, GraphNode, GraphEngineOptions } from './types';
 import { walkDirectory, toPosixPath } from './scanner';
-import { loadTsConfig } from './tsconfig';
+import { loadTsConfig, loadTsConfigForFile, TsConfigInfo } from './tsconfig';
 import { resolveImportTarget } from './resolver';
+
+const graphProjects = new WeakMap<DependencyGraph, {
+  project: Project;
+  rootDir: string;
+  diagnostics: Set<ts.Diagnostic>;
+  fileConfigs: Map<string, TsConfigInfo>;
+}>();
+
+export function getGraphProject(graph: DependencyGraph) {
+  return graphProjects.get(graph);
+}
+
+export function createAnalysisProject(rootDir: string, files: string[], explicitConfig?: string) {
+  const projectFilesSet = new Set(files.map(file => path.resolve(file)));
+  const rootConfig = loadTsConfig(rootDir, explicitConfig);
+  const diagnostics = new Set(rootConfig.diagnostics);
+  const fileConfigs = new Map<string, TsConfigInfo>();
+  for (const file of projectFilesSet) {
+    const config = explicitConfig ? rootConfig : loadTsConfigForFile(file, rootDir);
+    fileConfigs.set(file, config);
+    for (const diagnostic of config.diagnostics ?? []) diagnostics.add(diagnostic);
+  }
+
+  const project = new Project({
+    skipAddingFilesFromTsConfig: true,
+    compilerOptions: { target: ts.ScriptTarget.ES2022, ...rootConfig.compilerOptions, allowJs: true, noEmit: true },
+    resolutionHost: host => ({
+      resolveModuleNames: (names, importer, _reused, redirected, options, sourceFile) => {
+        const config = fileConfigs.get(path.resolve(importer));
+        const localOptions = { ...options, ...config?.compilerOptions };
+        const modes = new Map<string, Set<ts.ResolutionMode>>();
+        for (const statement of sourceFile?.statements ?? []) {
+          const specifier = ts.isImportDeclaration(statement) || ts.isExportDeclaration(statement)
+            ? statement.moduleSpecifier
+            : ts.isImportEqualsDeclaration(statement) && ts.isExternalModuleReference(statement.moduleReference)
+              ? statement.moduleReference.expression : undefined;
+          if (specifier && ts.isStringLiteral(specifier)) {
+            const specifierModes = modes.get(specifier.text) ?? new Set<ts.ResolutionMode>();
+            specifierModes.add(ts.getModeForUsageLocation(sourceFile!, specifier, localOptions));
+            modes.set(specifier.text, specifierModes);
+          }
+        }
+        return names.map(specifier => {
+          // ts-morph 25 exposes name-based hooks, so mixed resolution modes resolve only if they agree.
+          const specifierModes = modes.get(specifier) ?? [undefined];
+          const resolutions = [...specifierModes].map(mode =>
+            ts.resolveModuleName(specifier, importer, localOptions, host, undefined, redirected, mode).resolvedModule);
+          const [resolved] = resolutions;
+          if (resolutions.some(result => result?.resolvedFileName !== resolved?.resolvedFileName)) return undefined;
+          if (resolved || !config) return resolved;
+          // The existing file resolver covers workspace aliases and extension mappings.
+          const target = resolveImportTarget({
+            rootDir, fromFilePath: importer, specifier, tsConfigInfo: config, projectFilesSet
+          });
+          return target ? { resolvedFileName: toPosixPath(target) } : undefined;
+        });
+      }
+    })
+  });
+
+  for (const file of projectFilesSet) project.addSourceFileAtPathIfExists(file);
+  return { project, rootDir, diagnostics, projectFilesSet, fileConfigs };
+}
 
 /**
  * Builds a dependency graph for a TypeScript/JavaScript project folder.
@@ -15,28 +78,12 @@ import { resolveImportTarget } from './resolver';
 export function buildDependencyGraph(targetPath: string, options?: GraphEngineOptions): DependencyGraph {
   const rootDir = path.resolve(targetPath);
 
-  // 1. Walk filesystem for .ts, .tsx, .js, .jsx files (excluding node_modules, .git, dist, build)
+  // Discover source files and retain the project for semantic analysis of the same snapshot.
   const scannedFiles = walkDirectory(rootDir);
-  const projectFilesSet = new Set(scannedFiles.map(f => path.resolve(f)));
+  const context = createAnalysisProject(rootDir, scannedFiles, options?.tsConfigPath);
+  const { project, projectFilesSet, fileConfigs } = context;
 
-  // 2. Load tsconfig / jsconfig compiler options, paths, and baseUrl
-  const tsConfigInfo = loadTsConfig(rootDir, options?.tsConfigPath);
-
-  // 3. Initialize ts-morph Project to parse source files via AST
-  const project = new Project({
-    skipAddingFilesFromTsConfig: true,
-    compilerOptions: {
-      allowJs: true,
-      ...tsConfigInfo.compilerOptions
-    }
-  });
-
-  // Load scanned files into the ts-morph Project
-  for (const filePath of scannedFiles) {
-    project.addSourceFileAtPath(filePath);
-  }
-
-  // 4. Construct nodes
+  // Construct nodes
   const nodes: GraphNode[] = scannedFiles.map(filePath => {
     const relPath = path.relative(rootDir, filePath);
     return {
@@ -48,7 +95,7 @@ export function buildDependencyGraph(targetPath: string, options?: GraphEngineOp
   // Sort nodes alphabetically by id for deterministic output
   nodes.sort((a, b) => a.id.localeCompare(b.id));
 
-  // 5. Extract imports and requires, resolve targets to build edges
+  // Extract imports and requires, resolve targets to build edges
   const edges: GraphEdge[] = [];
   const edgeKeySet = new Set<string>();
 
@@ -120,7 +167,7 @@ export function buildDependencyGraph(targetPath: string, options?: GraphEngineOp
         rootDir,
         fromFilePath,
         specifier,
-        // Don't pass tsConfigInfo - let resolver load per-file config
+        tsConfigInfo: fileConfigs.get(fromFilePath),
         projectFilesSet
       });
 
@@ -151,7 +198,7 @@ export function buildDependencyGraph(targetPath: string, options?: GraphEngineOp
     nodes,
     edges
   };
-  (graph as any)._project = project;
+  graphProjects.set(graph, context);
 
   return graph;
 }

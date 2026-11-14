@@ -12,5 +12,11 @@ export {
   AnalyzedGraph,
   AnalysisResult,
   AnalysisOptions,
-  SymbolUsageItem
+  SymbolUsageItem,
+  SourceRange,
+  CallableNode,
+  CallEvidence,
+  FunctionCallEdge,
+  UnresolvedCall,
+  FunctionGraph
 } from './types';

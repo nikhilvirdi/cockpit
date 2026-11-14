@@ -81,8 +81,8 @@ async function runTests() {
     // 8. Upload endpoint: valid zip upload of a project
     const validZip = new AdmZip();
     validZip.addFile('tsconfig.json', Buffer.from(JSON.stringify({ compilerOptions: { paths: { '@util': ['./src/util'] } } })));
-    validZip.addFile('src/index.ts', Buffer.from("import { util } from '@util';\nexport const entry = () => util;"));
-    validZip.addFile('src/util.ts', Buffer.from("import { entry } from './index';\nexport const util = () => entry;"));
+    validZip.addFile('src/index.ts', Buffer.from("import { util } from '@util';\nexport const entry = () => util() + util();"));
+    validZip.addFile('src/util.ts', Buffer.from("import { entry } from './index';\nexport function util(): number { return entry(); }"));
     const validBuffer = validZip.toBuffer();
 
     const validFormData = new FormData();
@@ -94,8 +94,9 @@ async function runTests() {
     });
     assert.strictEqual(validUploadRes.status, 200, `Valid zip upload should return 200, got ${validUploadRes.status}`);
     const validData = await validUploadRes.json();
-    assert.deepStrictEqual(Object.keys(validData).sort(), ['analysis', 'edges', 'nodes', 'symbolUsage']);
+    assert.deepStrictEqual(Object.keys(validData).sort(), ['analysis', 'edges', 'functionGraph', 'nodes', 'symbolUsage']);
     assert.deepStrictEqual(validData.nodes.map(node => node.id), ['src/index.ts', 'src/util.ts']);
+    assert.ok(validData.nodes.every(node => node.path === node.id));
     assert.deepStrictEqual(validData.edges, [
       { from: 'src/index.ts', to: 'src/util.ts' },
       { from: 'src/util.ts', to: 'src/index.ts' }
@@ -105,7 +106,16 @@ async function runTests() {
       usage.importedSymbol === 'util' && usage.usedInFile === 'src/index.ts' &&
       usage.fromFile === 'src/util.ts' && usage.usedInScope === 'entry' && usage.line === 2
     ), 'Should include symbol-reference evidence for the importing file');
-    console.log('✓ Valid zip upload analyzed successfully (200: directed cycle and symbol evidence)');
+    const { functionGraph } = validData;
+    assert.strictEqual(functionGraph.coverage, 'complete');
+    assert.strictEqual(functionGraph.nodes.length, 2);
+    assert.strictEqual(functionGraph.edges.length, 2);
+    const entry = functionGraph.nodes.find(node => node.name === 'entry');
+    const util = functionGraph.nodes.find(node => node.name === 'util');
+    const invocation = functionGraph.edges.find(edge => edge.caller === entry.id && edge.callee === util.id);
+    assert.deepStrictEqual(invocation.sites.map(site => site.at.startColumn), [27, 36]);
+    assert.ok(invocation.sites.every(site => site.at.file === 'src/index.ts' && site.target.file === 'src/util.ts'));
+    console.log('✓ Valid zip upload returned the file cycle, symbol references, and both call sites');
 
     // 9. Upload endpoint: reject zip exceeding file count cap (413)
     const tooManyFilesZip = new AdmZip();

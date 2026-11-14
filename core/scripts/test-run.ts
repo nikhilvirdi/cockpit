@@ -83,6 +83,9 @@ function main() {
       console.log('No internal symbol usages found.');
     }
 
+    const { functionGraph } = graph;
+    console.log(`\nFunction graph: ${functionGraph.nodes.length} callables, ${functionGraph.edges.length} edges, ${functionGraph.unresolved.length} unresolved sites (${functionGraph.coverage})`);
+
     // If --output flag provided, write full JSON to disk
     if (outputPath) {
       const resolvedOutput = path.resolve(outputPath);

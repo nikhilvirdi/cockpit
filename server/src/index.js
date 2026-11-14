@@ -91,8 +91,7 @@ function analyzeDirectoryAndRespond(targetDir, res, sourceLabel = 'workspace') {
     } catch (analysisErr) {
       console.error(`Analysis error (${sourceLabel}):`, analysisErr);
       return res.status(500).json({
-        error: 'Analysis pipeline failed on the provided codebase.',
-        details: analysisErr.message
+        error: 'Analysis pipeline failed on the provided codebase.'
       });
     }
 
@@ -149,8 +148,7 @@ app.post('/api/analyze', async (req, res) => {
       });
     }
     return res.status(422).json({
-      error: 'Failed to clone repository. Ensure the repository exists and is public.',
-      details: cloneErr.message
+      error: 'Failed to clone repository. Ensure the repository exists and is public.'
     });
   }
 
