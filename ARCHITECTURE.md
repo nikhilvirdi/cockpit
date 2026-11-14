@@ -66,7 +66,7 @@ The core takes in a validated workspace and analysis options, and returns a dete
 
 #### Server Boundary
 
-The server acquires a workspace, calls the core analysis pipeline, and returns its result. A deployment can enable an isolated provider for missing SCIP indexes. The server owns temporary workspace cleanup, request cancellation, and limits for the indexer subprocess.
+The server acquires a workspace, calls the core analysis pipeline, and returns its result. A deployment can enable a trusted, isolated native analyzer image. The server owns temporary workspace cleanup, request cancellation, and limits for the analyzer subprocess.
 
 #### Client Boundary
 
@@ -90,7 +90,7 @@ In-memory, whole-archive extraction using **`adm-zip`** is being replaced with b
 
 #### Workspace Lifetime
 
-Every analysis gets its own isolated temporary workspace. Source copies, SCIP output, and parser artifacts are all scoped to that one analysis and get removed on completion, cancellation, timeout, or failure. The client still needs source inspection after cleanup, so the result has to retain bounded excerpts and line locations as evidence on its own. It can't depend on temporary files sticking around.
+Every analysis gets its own isolated temporary workspace. Source copies, native analyzer output, and parser artifacts are all scoped to that one analysis and get removed on completion, cancellation, timeout, or failure. The client still needs source inspection after cleanup, so the result has to retain bounded excerpts and line locations as evidence on its own. It can't depend on temporary files sticking around.
 
 ### Source Discovery and Configuration
 
@@ -102,49 +102,13 @@ A file belongs to the graph by its normalized repository-relative path. Absolute
 
 ### Static Analysis Technologies
 
-#### SCIP as the Common Semantic Interchange Format
+#### Direct Analysis and Result Protocol
 
-SCIP, the Code Intelligence Protocol, is the interchange format for semantic symbol definitions and references coming out of existing compiler-aware indexers. Its Protobuf records give source occurrences, roles, symbol identifiers, and definition/reference relationships. They get decoded using the official TypeScript bindings, **`@scip-code/scip`** where it's available and compatible, or bindings generated from the official SCIP Protobuf schema. Tested schema and indexer versions get pinned rather than assuming every indexer gives identical coverage or source-position conventions.
+JavaScript and TypeScript use the existing `ts-morph` and TypeScript compiler path. Python uses `ast` for source syntax and Jedi for project-aware resolution. Go uses `go/packages`, `go/parser`, `go/ast`, and `go/types`. Java uses JavaParser and JavaSymbolSolver with source roots, JDK types and optional trusted classpath JARs. C and C++ use Clang LibTooling with preprocessor callbacks and semantic AST visitors.
 
-SCIP is not the Cockpit graph model, and it's not a ready-made function-call graph. Reference occurrences still have to be matched to AST call expressions and the target declaration verified. SCIP symbol identities are useful internal semantic keys, but they don't replace repository-relative file identity or a stable, versioned Cockpit API contract.
+The native tools return one bounded JSON object on stdout. Protocol version 1 names the pinned tool and provides tables for parsed files, package identities, callable declarations, dependency sites, call sites, and diagnostics. Locations identify repository-relative files with zero-based lines and exclusive ends. Java uses UTF-16 columns. The other tools return Unicode code-point columns. Core validates paths, file content hashes, source ranges, declaration identities, output size and row counts, then converts ranges to UTF-16 and aggregates evidence into the existing graph.
 
-#### Tree-sitter for Language-Neutral Syntax Extraction
-
-The application uses the pinned **`@vscode/tree-sitter-wasm`** runtime and its Python, Go, Java, and C++ grammars, plus the official C grammar's WASM artifact from **`tree-sitter-c`**. One WASM runtime handles syntax extraction on Windows and Linux without native Node bindings. The adapter identifies imports, includes, callable declarations, calls, and scopes, then matches tokens to normalized SCIP ranges.
-
-Tree-sitter gives syntax, not type checking or project-aware symbol resolution. A syntactic call name alone is never enough for a verified cross-file edge. JavaScript/TypeScript keeps using `ts-morph` for both syntax and semantics; a second parser isn't needed there unless there's a concrete reason for one.
-
-#### JavaScript and TypeScript
-
-`ts-morph` and the underlying TypeScript compiler project model stay as the primary JS/TS implementation. It already supports project-aware import resolution and AST access. It resolves relative paths, `tsconfig` aliases, workspace boundaries, barrel re-exports, named/default/namespace imports, CommonJS `require`, and relevant type-only references, without conflating types with calls.
-
-The existing `symbolUsage.ts` identifies imported references and their enclosing scopes. `functionGraph.ts` shares the same compiler project, classifies actual call expressions, and binds defensible targets to their declarations. Call edges group every site for a caller and callee. Overload evidence preserves the compiler-selected signature and the implementation location.
-
-**`scip-typescript`** is a credible alternative semantic producer and a compatibility target for the common SCIP adapter. It needs validating against the existing `ts-morph` results before substituting it in for a working resolution path. Both shouldn't run as mandatory duplicate passes over every JS/TS repository.
-
-#### Python
-
-**`scip-python`** (Pyright-based) handles project-aware symbol references, together with the Tree-sitter Python grammar for syntactic call contexts and enclosing functions. Relative imports and package/module structure get resolved using the analyzer's environment-aware rules. Diagnostics stay around for missing interpreters, import paths, dependencies, or unresolved types.
-
-Python's dynamic attributes, decorators, monkey patching, factory-returned callables, and dynamic imports put a hard ceiling on what's possible. A syntactically valid `obj.method()` call doesn't guarantee a unique runtime implementation. A missing Python environment lowers coverage, not an unapproved package install or a fabricated target.
-
-#### Go
-
-**`scip-go`** handles compiler-informed symbol references, and the Tree-sitter Go grammar covers call sites, declarations, and source ranges. Go module/workspace configuration and the package build context drive resolution. Package imports are first-class here: a Go import names a package, not one particular source file. Package-level relationships get modeled explicitly and expanded to actual definitions once a resolved symbol or call points at a file.
-
-The supplied index defines the build-tag and generated-file coverage. Go module roots are discovered independently. Interface dispatch stays ambiguous when SCIP identifies an interface declaration. The index producer needs the correct Go toolchain, module settings, and available package dependencies.
-
-#### Java
-
-**`scip-java`** handles semantic declarations and references, and the Tree-sitter Java grammar covers call-site classification and enclosing members. Getting target binding right depends on classes, packages, overload resolution, inherited members, and a usable compilation environment. Maven/Gradle configuration provides the necessary context, but just having a `pom.xml` doesn't guarantee successful indexing.
-
-`scip-java` can trigger build-tool activity as part of compiling. Project build commands don't run automatically on untrusted uploads or public GitHub repositories on a shared server. When safe semantic indexing isn't available, a clearly marked partial analysis shows instead of claiming full function-call coverage. A trusted local deployment can explicitly enable a controlled build-capable executor, but under its own separate security policy.
-
-#### C and C++
-
-**`scip-clang`** handles compiler-aware semantic references, and the Tree-sitter C/C++ grammars cover include directives, declarations, and call sites at the source level. Accurate indexing normally needs **`compile_commands.json`** describing translation units, include paths, macros, compiler flags, and language modes. An existing CMake-generated compilation database can be consumed; Cockpit doesn't silently configure or build an unknown project just to produce one.
-
-An include edge points to an indexed header. Call resolution joins exact symbols shared by declarations and definitions, including across C and C++ when the compiler supplies the same symbol identity. Compiler flags, macros, headers, and indexed translation units determine coverage. Function pointers, missing template definitions, and potentially virtual calls can remain unresolved.
+Go uses compiler-loaded package identity for imports and file locations for calls. Python and Java use resolved project declarations. Clang uses compiler declaration identities to link definitions across translation units, and compiler language mode to classify headers. Dynamic or virtual dispatch stays unresolved when the analyzer cannot establish the executed target.
 
 ### The Normalized Model
 
@@ -159,7 +123,7 @@ An import or symbol reference can support the file inspector without implying a 
 
 #### Canonical Entities and Evidence
 
-The wire format is meant to be small, typed, versioned, and extensible, without embedding parser-specific AST objects. The TypeScript interfaces below are illustrative contracts. Fields might shift once they get validated against real indexer output, but their meaning is fixed.
+The wire format is meant to be small, typed, versioned, and extensible, without embedding parser-specific AST objects. The TypeScript interfaces below are illustrative contracts. Fields might shift once they get validated against real analyzer output, but their meaning is fixed.
 
 ```ts
 type Language =
@@ -184,7 +148,7 @@ type DependencyNode = {
   name: string;
   file?: string; // mandatory for a file or source-defined function
   range?: SourceRange; // declaration span when known
-  semanticKey?: string; // SCIP/compiler identity when available
+  semanticKey?: string; // compiler identity when available
 };
 
 type DependencyEvidence = {
@@ -236,7 +200,7 @@ type CockpitGraph = {
 
 File IDs come from normalized repository-relative paths. Callable IDs distinguish overloads, methods, and same-name declarations using a stable semantic key and, when needed, the declaration location. A human-readable function name by itself isn't an identifier. IDs have to be deterministic for a given source snapshot and analyzer configuration.
 
-All ranges use one documented internal indexing convention. SCIP, Tree-sitter, TypeScript, and editor APIs don't all agree on character offset or byte conventions, so adapters have to normalize these correctly, Unicode and CRLF included. Users see one-based line numbers, while exact source paths stay separate from the shortened labels users actually see.
+All ranges use one documented internal indexing convention. Language analyzers and editor APIs don't all agree on character offset or byte conventions, so adapters have to normalize these correctly, Unicode and CRLF included. Users see one-based line numbers, while exact source paths stay separate from the shortened labels users actually see.
 
 #### Unresolved and Ambiguous Relationships
 
@@ -246,7 +210,7 @@ A function-call edge never gets inferred from matching names, an import list, a 
 
 #### Deduplication and Provenance
 
-Multiple occurrences between the same caller and callee can collapse into one visible edge, but every call site stays in that edge's evidence collection. Indexer identity and diagnostics stay around internally for troubleshooting. Duplicate SCIP occurrences and AST references get merged using normalized file, range, symbol, and relationship kind, never display names.
+Multiple occurrences between the same caller and callee can collapse into one visible edge, but every call site stays in that edge's evidence collection. Indexer identity and diagnostics stay around internally for troubleshooting. Duplicate source occurrences get merged using normalized file, range, symbol, and relationship kind, never display names.
 
 The core produces consistently ordered nodes, edges, evidence, and diagnostics for identical inputs. That gives reproducible tests, stable UI selection, and room to change the contract later without needing a database.
 
@@ -254,13 +218,13 @@ The core produces consistently ordered nodes, edges, evidence, and diagnostics f
 
 #### File and Module Edges
 
-Dependency declarations get identified using syntax plus language-aware resolution. Local project targets resolve through the right compiler or indexer. The import statement's location, the imported spelling, aliased targets, type-only status, and the source module all get preserved. Repeated declarations between the same file/module endpoints get aggregated, but all the evidence stays.
+Dependency declarations get identified using syntax plus language-aware resolution. Local project targets resolve through the right compiler or analyzer. The import statement's location, the imported spelling, aliased targets, type-only status, and the source module all get preserved. Repeated declarations between the same file/module endpoints get aggregated, but all the evidence stays.
 
 Third-party package imports can be recorded as explanatory external names without becoming graph nodes by default. Re-exports and aliases resolve through actual symbol bindings, not naive filename or identifier matching. Configuration-dependent edges get qualified when the active build context excludes some possible imports.
 
 #### Function and Method Call Edges
 
-For each potential call expression, the enclosing callable gets identified, local or nested functions included, the symbol occurrence tied to the callee expression gets pulled, bound to a declaration using the semantic index or compiler, the dispatch classified, and a call edge only emitted when the relationship actually holds up.
+For each potential call expression, the enclosing callable gets identified, local or nested functions included, the callee is bound to a declaration using the native analyzer or compiler, the dispatch classified, and a call edge only emitted when the relationship actually holds up.
 
 The caller can live in any directory. Nested functions get their own identities; a call inside a nested function doesn't automatically belong to the outer function. Calls from module-level initialization can stay in the inspection evidence without a fictional function node invented for them. Imported symbols used as values show up as references, not calls.
 
@@ -276,7 +240,7 @@ Where package nodes are involved, cycles get labeled at the right abstraction le
 
 #### Running the Analysis
 
-Node.js and Express stay as a thin orchestration server. The default path consumes supplied indexes. The optional provider uses **`child_process.spawn`** with argument arrays and `shell: false` to run an operator-configured local Docker image pinned by digest or ID. It bounds stdout, stderr, runtime, and concurrent containers and removes the container when indexing is canceled. Graph construction and source parsing remain in-process.
+Node.js and Express stay as a thin orchestration server. The native provider uses **`child_process.spawn`** with argument arrays and `shell: false` to run an operator-configured local Docker image pinned by digest or ID. It bounds stdout, stderr, runtime, and concurrent containers and removes the container when analysis is canceled. Native source parsing runs in the container, and core normalizes the response.
 
 #### API Shape
 
@@ -289,7 +253,7 @@ The existing ingestion entry points stay, with their execution semantics made co
 
 #### Resource Limits and Failures
 
-Uploads have compressed size, expanded size, and file-count caps. The SCIP consumer limits index bytes, document and occurrence counts, and indexed source bytes. The indexer provider limits time, memory, CPU, processes, and output. Missing prerequisites and invalid or failed indexes produce scoped diagnostics so successfully analyzed languages remain available.
+Uploads have compressed size, expanded size, and file-count caps. The native provider limits snapshot bytes, file count, time, memory, CPU, processes, and output. Missing prerequisites and invalid or failed analyzer results produce scoped diagnostics so successfully analyzed languages remain available.
 
 ### Security and Trust
 
@@ -297,7 +261,7 @@ Everything coming from GitHub or an upload is untrusted. Parsing the source is f
 
 A publicly reachable shared server can't enable build-capable indexing of untrusted projects without isolation strong enough to survive arbitrary code execution: a hardened sandbox or container with disabled or tightly controlled networking, CPU/memory/process limits, a temporary filesystem, and no host credentials. A temporary directory by itself is not a security sandbox. Without that isolation, build-dependent languages get partial coverage instead of a weaker trust boundary.
 
-Cockpit consumes prebuilt indexes as supplied evidence for a source snapshot. It checks their format, paths, positions, and syntax matches. A supplied index does not certify provenance or completeness. The optional provider runs offline with a read-only source mount, unprivileged user, and bounded scratch space. Operators must provide versioned tools and offline dependencies in a trusted image and use a dedicated hardened runtime when allowing untrusted builds.
+The host copies regular files into a private read-only mount, excluding Git metadata and symlinks. It hashes source bytes before analysis and checks the workspace again afterward. Core only accepts evidence at paths with matching host hashes. Containers run offline as an unprivileged user with resource limits. Java uses trusted classpath artifacts. Go disables package drivers, CGO, and downloads. Clang accepts a restricted set of compilation database options and omits plugins, response files and external include paths.
 
 ZIP traversal, archive bombs, symlink escape, Git URL option injection, unexpected credential use, and unbounded process spawning all get guarded against. All API input gets validated. Error messages and stored source excerpts get sanitized so they don't leak server paths, environment variables, credentials, or unrelated local data. Uploaded code is ephemeral and never used for model training or external indexing services; analyses stay local to the deployed server unless that policy is deliberately changed.
 
@@ -327,7 +291,7 @@ Dependency direction gets explained consistently in the interface: **consumer/ca
 
 Parse and semantically index the repository once per analysis job. Build adjacency indexes for incoming and outgoing neighbors, and cache file-to-function and function-to-file associations inside the returned graph or client-derived indexes. Source analysis doesn't get recomputed every time someone clicks around, filters, or opens the inspector.
 
-Source snapshots stay bounded, and the expensive external indexers run outside the HTTP event loop under concurrency limits. Expensive layout operations can move off the main browser thread if profiling shows interaction stalls. Visible-subgraph extraction, incremental expansion, and evidence aggregation come before reaching for virtualized rendering or a different graph library.
+Source snapshots stay bounded, and the expensive native analyzers run outside the HTTP event loop under concurrency limits. Expensive layout operations can move off the main browser thread if profiling shows interaction stalls. Visible-subgraph extraction, incremental expansion, and evidence aggregation come before reaching for virtualized rendering or a different graph library.
 
 This is built for modest-to-medium repositories, at least for now. Resource limits and explicit partial results beat silently accepting arbitrarily large repositories and dropping relationships without saying so. A graph database or a distributed compute layer isn't on the table unless the repository limits actually in place require one.
 
@@ -341,13 +305,13 @@ A visual edge has to trace back to at least one source location and a defensible
 
 #### Contract and Integration Testing
 
-The repository's existing **`tsx`-based core tests** and **Node.js server tests** stay, along with **Playwright** for browser interactions and graph-selection flows. Deterministic golden outputs for the normalized graph, adapter compatibility tests against pinned indexer fixtures, API tests for cancellation and partial results, and security tests for path traversal, archive expansion limits, missing configs, and subprocess failures are all getting added. No new testing framework needed just for the sake of uniformity.
+The repository's existing **`tsx`-based core tests** and **Node.js server tests** stay, along with **Playwright** for browser interactions and graph-selection flows. Deterministic golden outputs for the normalized graph, adapter compatibility tests against pinned native-tool fixtures, API tests for cancellation and partial results, and security tests for path traversal, archive expansion limits, missing configs, and subprocess failures are all getting added. No new testing framework needed just for the sake of uniformity.
 
 Source ranges get tested with Unicode identifiers, CRLF, comments, aliased imports, and multiple occurrences on one line. Edge aggregation has to preserve every call-site location. Running the same pinned repository and configuration twice should produce stable identities and output ordering.
 
 #### Meaningful Diagnostics
 
-The reason behind every unresolved relationship or partial analysis needs to be visible: missing build metadata, unsupported syntax, missing dependencies, dynamic dispatch, compiler errors, excluded files, or an indexer failure. These diagnostics describe analysis coverage, not architectural quality. They belong in the inspector or a small status area, not a separate reporting feature.
+The reason behind every unresolved relationship or partial analysis needs to be visible: missing build metadata, unsupported syntax, missing dependencies, dynamic dispatch, compiler errors, excluded files, or an analyzer failure. These diagnostics describe analysis coverage, not architectural quality. They belong in the inspector or a small status area, not a separate reporting feature.
 
 ### Technology Decisions
 
@@ -362,9 +326,6 @@ The reason behind every unresolved relationship or partial analysis needs to be 
 
 #### Adding Where It's Actually Needed
 
-- **SCIP** and its TypeScript Protobuf bindings for semantic index ingestion.
-- **`scip-python`**, **`scip-go`**, **`scip-java`**, **`scip-clang`** as language-specific semantic producers, subject to environment and security prerequisites.
-- **`scip-typescript`** as a validated alternative to the existing JS/TS semantic implementation, not a mandatory duplicate of it.
 - **`tree-sitter`** and the Python, Go, Java, C, and C++ grammars for syntax/call-site extraction.
 - **`elkjs`** for dependency-oriented graph layout.
 - **`yauzl`** for bounded ZIP extraction.
@@ -380,7 +341,7 @@ The reason behind every unresolved relationship or partial analysis needs to be 
 
 ### Existing Repository Baseline and Compatibility
 
-The repository retains JS/TS module resolution, AST-based symbol usage reporting, cycle detection, GitHub and ZIP ingestion, and two Cytoscape views with a shared React inspector. The pipeline extends discovery across supported source types and reads SCIP indexes from the closest project roots. The ingestion routes keep their existing response fields. Mixed-language responses can include per-root coverage, Go package nodes, and source evidence on file edges. `functionGraph` holds callable nodes, caller-to-callee edges, module-level calls, unresolved sites, and coverage diagnostics. Ranges use repository-relative paths and zero-based UTF-16 line and column offsets with exclusive ends. The inspector displays one-based coordinates and preserves the exclusive endpoint.
+The repository retains JS/TS module resolution, AST-based symbol usage reporting, cycle detection, GitHub and ZIP ingestion, and two Cytoscape views with a shared React inspector. The pipeline extends discovery across supported source types and runs direct native tools for the languages present. The ingestion routes keep their existing response fields. Mixed-language responses can include per-language workspace coverage, Go package nodes, and source evidence on file edges. `functionGraph` holds callable nodes, caller-to-callee edges, module-level calls, unresolved sites, and coverage diagnostics. Ranges use repository-relative paths and zero-based UTF-16 line and column offsets with exclusive ends. The inspector displays one-based coordinates and preserves the exclusive endpoint.
 
 Existing code gets treated as something to reuse, not a reason to keep removed features alive in the public API. Whatever directly helps dependency correctness stays; data contracts that encode concepts the project has moved past get simplified or replaced. None of this is a wholesale rewrite; any replacement needs a real semantic or usability reason behind it.
 
@@ -392,7 +353,7 @@ Cockpit satisfies its architectural contract only when the following statements 
 - Function-call edges represent actual calls, not just imports or identifier references; same-file and cross-folder calls get handled the same way.
 - Directed edges go consumer/caller → supplier/callee, and the visual treatment never flips that meaning.
 - Repository-relative paths, source ranges, overloaded declarations, and symbol identities stay unambiguous.
-- Missing configuration, dynamic dispatch, unsupported constructs, and indexer failures never turn into invented confirmed edges.
+- Missing configuration, dynamic dispatch, unsupported constructs, and analyzer failures never turn into invented confirmed edges.
 - The server treats repository contents as untrusted, bounds its resource use, doesn't silently run project builds, and cleans up its temporary workspaces.
 - A selected dependency's precise cause can be inspected, its neighborhood followed, and the surrounding graph returned to without the UI getting in the way.
 - This stays a dependency explorer. Adding a language doesn't open the door to unrelated features.
@@ -401,12 +362,5 @@ Cockpit satisfies its architectural contract only when the following statements 
 
 - [Cockpit repository](https://github.com/nikhilvirdi/cockpit)
 - [TypeScript compiler API](https://github.com/microsoft/TypeScript/wiki/Using-the-Compiler-API) and [ts-morph](https://ts-morph.com/)
-- [SCIP protocol and schema](https://github.com/scip-code/scip) and [SCIP reference](https://github.com/scip-code/scip/blob/main/docs/scip.md)
-- [scip-typescript](https://github.com/sourcegraph/scip-typescript)
-- [scip-python](https://github.com/sourcegraph/scip-python)
-- [scip-go](https://github.com/scip-code/scip-go)
-- [scip-java](https://github.com/scip-code/scip-java) and [indexing prerequisites](https://scip-code.github.io/scip-java/docs/getting-started.html)
-- [scip-clang](https://github.com/sourcegraph/scip-clang) and [Clang compilation database format](https://clang.llvm.org/docs/JSONCompilationDatabase.html)
-- [Tree-sitter](https://tree-sitter.github.io/tree-sitter/), [VS Code WASM distribution](https://github.com/microsoft/vscode-tree-sitter-wasm), and [C grammar](https://github.com/tree-sitter/tree-sitter-c)
 - [Cytoscape.js](https://js.cytoscape.org/), [Cytoscape ELK adapter](https://github.com/cytoscape/cytoscape.js-elk), and [ELK](https://eclipse.dev/elk/)
 - [Node.js child-process API](https://nodejs.org/api/child_process.html), [yauzl](https://www.npmjs.com/package/yauzl), [Zod](https://zod.dev/), and [Shiki](https://shiki.style/)
