@@ -13,10 +13,6 @@
       "path": "C:/Cockpit/core/src/engine.ts"
     },
     {
-      "id": "src/envUsage.ts",
-      "path": "C:/Cockpit/core/src/envUsage.ts"
-    },
-    {
       "id": "src/index.ts",
       "path": "C:/Cockpit/core/src/index.ts"
     },
@@ -49,44 +45,12 @@
       "path": "C:/Cockpit/core/test/engine.test.ts"
     },
     {
-      "id": "test/envUsage.test.ts",
-      "path": "C:/Cockpit/core/test/envUsage.test.ts"
-    },
-    {
-      "id": "test/fixtures/analysis-project/app/users/page.tsx",
-      "path": "C:/Cockpit/core/test/fixtures/analysis-project/app/users/page.tsx"
-    },
-    {
-      "id": "test/fixtures/analysis-project/pages/dashboard.tsx",
-      "path": "C:/Cockpit/core/test/fixtures/analysis-project/pages/dashboard.tsx"
-    },
-    {
-      "id": "test/fixtures/analysis-project/src/cli.ts",
-      "path": "C:/Cockpit/core/test/fixtures/analysis-project/src/cli.ts"
-    },
-    {
       "id": "test/fixtures/analysis-project/src/cycle/node1.ts",
       "path": "C:/Cockpit/core/test/fixtures/analysis-project/src/cycle/node1.ts"
     },
     {
       "id": "test/fixtures/analysis-project/src/cycle/node2.ts",
       "path": "C:/Cockpit/core/test/fixtures/analysis-project/src/cycle/node2.ts"
-    },
-    {
-      "id": "test/fixtures/analysis-project/src/index.ts",
-      "path": "C:/Cockpit/core/test/fixtures/analysis-project/src/index.ts"
-    },
-    {
-      "id": "test/fixtures/analysis-project/src/legacy/deadCode.ts",
-      "path": "C:/Cockpit/core/test/fixtures/analysis-project/src/legacy/deadCode.ts"
-    },
-    {
-      "id": "test/fixtures/analysis-project/src/routes.ts",
-      "path": "C:/Cockpit/core/test/fixtures/analysis-project/src/routes.ts"
-    },
-    {
-      "id": "test/fixtures/analysis-project/src/server.ts",
-      "path": "C:/Cockpit/core/test/fixtures/analysis-project/src/server.ts"
     },
     {
       "id": "test/fixtures/analysis-project/src/services/serviceA.ts",
@@ -99,30 +63,6 @@
     {
       "id": "test/fixtures/analysis-project/src/services/serviceC.ts",
       "path": "C:/Cockpit/core/test/fixtures/analysis-project/src/services/serviceC.ts"
-    },
-    {
-      "id": "test/fixtures/analysis-project/src/utils/orphanUtil.ts",
-      "path": "C:/Cockpit/core/test/fixtures/analysis-project/src/utils/orphanUtil.ts"
-    },
-    {
-      "id": "test/fixtures/env-project/src/config.ts",
-      "path": "C:/Cockpit/core/test/fixtures/env-project/src/config.ts"
-    },
-    {
-      "id": "test/fixtures/env-project/src/db.ts",
-      "path": "C:/Cockpit/core/test/fixtures/env-project/src/db.ts"
-    },
-    {
-      "id": "test/fixtures/env-project/src/direct.ts",
-      "path": "C:/Cockpit/core/test/fixtures/env-project/src/direct.ts"
-    },
-    {
-      "id": "test/fixtures/env-project/src/legacy.ts",
-      "path": "C:/Cockpit/core/test/fixtures/env-project/src/legacy.ts"
-    },
-    {
-      "id": "test/fixtures/env-project/src/service.ts",
-      "path": "C:/Cockpit/core/test/fixtures/env-project/src/service.ts"
     },
     {
       "id": "test/fixtures/sample-project/src/barrel/deep.ts",
@@ -180,10 +120,6 @@
     },
     {
       "from": "src/analysis.ts",
-      "to": "src/envUsage.ts"
-    },
-    {
-      "from": "src/analysis.ts",
       "to": "src/symbolUsage.ts"
     },
     {
@@ -207,32 +143,12 @@
       "to": "src/types.ts"
     },
     {
-      "from": "src/envUsage.ts",
-      "to": "src/resolver.ts"
-    },
-    {
-      "from": "src/envUsage.ts",
-      "to": "src/scanner.ts"
-    },
-    {
-      "from": "src/envUsage.ts",
-      "to": "src/tsconfig.ts"
-    },
-    {
-      "from": "src/envUsage.ts",
-      "to": "src/types.ts"
-    },
-    {
       "from": "src/index.ts",
       "to": "src/analysis.ts"
     },
     {
       "from": "src/index.ts",
       "to": "src/engine.ts"
-    },
-    {
-      "from": "src/index.ts",
-      "to": "src/envUsage.ts"
     },
     {
       "from": "src/index.ts",
@@ -283,28 +199,12 @@
       "to": "src/index.ts"
     },
     {
-      "from": "test/envUsage.test.ts",
-      "to": "src/index.ts"
-    },
-    {
-      "from": "test/fixtures/analysis-project/src/cli.ts",
-      "to": "test/fixtures/analysis-project/src/services/serviceA.ts"
-    },
-    {
       "from": "test/fixtures/analysis-project/src/cycle/node1.ts",
       "to": "test/fixtures/analysis-project/src/cycle/node2.ts"
     },
     {
       "from": "test/fixtures/analysis-project/src/cycle/node2.ts",
       "to": "test/fixtures/analysis-project/src/cycle/node1.ts"
-    },
-    {
-      "from": "test/fixtures/analysis-project/src/index.ts",
-      "to": "test/fixtures/analysis-project/src/routes.ts"
-    },
-    {
-      "from": "test/fixtures/analysis-project/src/server.ts",
-      "to": "test/fixtures/analysis-project/src/routes.ts"
     },
     {
       "from": "test/fixtures/analysis-project/src/services/serviceA.ts",
@@ -317,14 +217,6 @@
     {
       "from": "test/fixtures/analysis-project/src/services/serviceC.ts",
       "to": "test/fixtures/analysis-project/src/services/serviceA.ts"
-    },
-    {
-      "from": "test/fixtures/env-project/src/db.ts",
-      "to": "test/fixtures/env-project/src/config.ts"
-    },
-    {
-      "from": "test/fixtures/env-project/src/service.ts",
-      "to": "test/fixtures/env-project/src/config.ts"
     },
     {
       "from": "test/fixtures/sample-project/src/barrel/index.ts",
@@ -343,6 +235,14 @@
       "to": "test/fixtures/sample-project/src/cjsModule.js"
     },
     {
+      "from": "test/fixtures/sample-project/src/index.ts",
+      "to": "test/fixtures/sample-project/src/components/Button.tsx"
+    },
+    {
+      "from": "test/fixtures/sample-project/src/index.ts",
+      "to": "test/fixtures/sample-project/src/utils/a.ts"
+    },
+    {
       "from": "test/fixtures/sample-project/src/utils/a.ts",
       "to": "test/fixtures/sample-project/src/helpers/helper.ts"
     },
@@ -357,10 +257,6 @@
     {
       "from": "test/run-all.ts",
       "to": "test/engine.test.ts"
-    },
-    {
-      "from": "test/run-all.ts",
-      "to": "test/envUsage.test.ts"
     },
     {
       "from": "test/run-all.ts",
@@ -382,178 +278,6 @@
         "test/fixtures/analysis-project/src/services/serviceB.ts",
         "test/fixtures/analysis-project/src/services/serviceC.ts"
       ]
-    ],
-    "orphans": [
-      "scripts/test-run.ts",
-      "test/fixtures/analysis-project/app/users/page.tsx",
-      "test/fixtures/analysis-project/pages/dashboard.tsx",
-      "test/fixtures/analysis-project/src/cli.ts",
-      "test/fixtures/analysis-project/src/legacy/deadCode.ts",
-      "test/fixtures/analysis-project/src/utils/orphanUtil.ts",
-      "test/fixtures/env-project/src/db.ts",
-      "test/fixtures/env-project/src/direct.ts",
-      "test/fixtures/env-project/src/legacy.ts",
-      "test/fixtures/env-project/src/service.ts",
-      "test/fixtures/sample-project/src/components/Button.tsx",
-      "test/fixtures/sample-project/src/dynamicTarget.ts",
-      "test/fixtures/sample-project/src/utils/a.ts",
-      "test/fixtures/symbol-project/src/consumer.ts",
-      "test/run-all.ts"
-    ],
-    "entryPoints": [
-      {
-        "id": "src/analysis.ts",
-        "reason": "Express server entry (app.listen)"
-      },
-      {
-        "id": "src/index.ts",
-        "reason": "package.json main field"
-      },
-      {
-        "id": "test/fixtures/analysis-project/src/index.ts",
-        "reason": "Directory index file with no incoming imports"
-      },
-      {
-        "id": "test/fixtures/analysis-project/src/server.ts",
-        "reason": "Express server entry (app.listen)"
-      },
-      {
-        "id": "test/fixtures/sample-project/src/index.ts",
-        "reason": "Directory index file with no incoming imports"
-      }
-    ],
-    "centrality": {
-      "topFanIn": [
-        {
-          "id": "src/index.ts",
-          "fanIn": 5
-        },
-        {
-          "id": "src/tsconfig.ts",
-          "fanIn": 5
-        },
-        {
-          "id": "src/types.ts",
-          "fanIn": 5
-        },
-        {
-          "id": "src/resolver.ts",
-          "fanIn": 4
-        },
-        {
-          "id": "src/scanner.ts",
-          "fanIn": 4
-        },
-        {
-          "id": "src/envUsage.ts",
-          "fanIn": 2
-        },
-        {
-          "id": "src/symbolUsage.ts",
-          "fanIn": 2
-        },
-        {
-          "id": "test/fixtures/analysis-project/src/routes.ts",
-          "fanIn": 2
-        },
-        {
-          "id": "test/fixtures/analysis-project/src/services/serviceA.ts",
-          "fanIn": 2
-        },
-        {
-          "id": "test/fixtures/env-project/src/config.ts",
-          "fanIn": 2
-        }
-      ],
-      "topFanOut": [
-        {
-          "id": "src/index.ts",
-          "fanOut": 8
-        },
-        {
-          "id": "src/engine.ts",
-          "fanOut": 4
-        },
-        {
-          "id": "src/envUsage.ts",
-          "fanOut": 4
-        },
-        {
-          "id": "src/symbolUsage.ts",
-          "fanOut": 4
-        },
-        {
-          "id": "test/run-all.ts",
-          "fanOut": 4
-        },
-        {
-          "id": "src/analysis.ts",
-          "fanOut": 3
-        },
-        {
-          "id": "test/fixtures/sample-project/src/index.ts",
-          "fanOut": 2
-        },
-        {
-          "id": "scripts/test-run.ts",
-          "fanOut": 1
-        },
-        {
-          "id": "src/resolver.ts",
-          "fanOut": 1
-        },
-        {
-          "id": "test/analysis.test.ts",
-          "fanOut": 1
-        }
-      ]
-    }
-  },
-  "envUsage": {
-    "declaredKeys": [],
-    "usages": [
-      {
-        "key": "API_SECRET",
-        "file": "test/fixtures/env-project/src/direct.ts",
-        "kind": "direct",
-        "pattern": "destructure"
-      },
-      {
-        "key": "DATABASE_URL",
-        "file": "test/fixtures/env-project/src/config.ts",
-        "kind": "direct",
-        "pattern": "export-const"
-      },
-      {
-        "key": "DATABASE_URL",
-        "file": "test/fixtures/env-project/src/db.ts",
-        "kind": "transitive",
-        "via": "test/fixtures/env-project/src/config.ts"
-      },
-      {
-        "key": "DATABASE_URL",
-        "file": "test/fixtures/env-project/src/service.ts",
-        "kind": "transitive",
-        "via": "test/fixtures/env-project/src/config.ts"
-      },
-      {
-        "key": "PORT",
-        "file": "test/fixtures/env-project/src/config.ts",
-        "kind": "direct",
-        "pattern": "export-const"
-      },
-      {
-        "key": "PORT",
-        "file": "test/fixtures/env-project/src/direct.ts",
-        "kind": "direct",
-        "pattern": "export-const"
-      }
-    ],
-    "dynamicAccesses": [
-      {
-        "file": "test/fixtures/env-project/src/legacy.ts",
-        "note": "process.env[varName] — key not statically resolvable"
-      }
     ]
   },
   "symbolUsage": [
@@ -574,59 +298,11 @@
       "typeOnly": false
     },
     {
-      "importedSymbol": "CentralityAnalysis",
-      "fromFile": "src/types.ts",
-      "usedInFile": "src/analysis.ts",
-      "usedInScope": "computeCentrality",
-      "line": 205,
-      "typeOnly": true
-    },
-    {
-      "importedSymbol": "NodeCentralityFanIn",
-      "fromFile": "src/types.ts",
-      "usedInFile": "src/analysis.ts",
-      "usedInScope": "computeCentrality",
-      "line": 224,
-      "typeOnly": true
-    },
-    {
-      "importedSymbol": "NodeCentralityFanOut",
-      "fromFile": "src/types.ts",
-      "usedInFile": "src/analysis.ts",
-      "usedInScope": "computeCentrality",
-      "line": 229,
-      "typeOnly": true
-    },
-    {
-      "importedSymbol": "EntryPoint",
-      "fromFile": "src/types.ts",
-      "usedInFile": "src/analysis.ts",
-      "usedInScope": "detectEntryPoints",
-      "line": 251,
-      "typeOnly": true
-    },
-    {
-      "importedSymbol": "EntryPoint",
-      "fromFile": "src/types.ts",
-      "usedInFile": "src/analysis.ts",
-      "usedInScope": "detectEntryPoints",
-      "line": 412,
-      "typeOnly": true
-    },
-    {
-      "importedSymbol": "EntryPoint",
-      "fromFile": "src/types.ts",
-      "usedInFile": "src/analysis.ts",
-      "usedInScope": "detectOrphans",
-      "line": 428,
-      "typeOnly": true
-    },
-    {
       "importedSymbol": "DependencyGraph",
       "fromFile": "src/types.ts",
       "usedInFile": "src/analysis.ts",
       "usedInScope": "analyzeDependencyGraph",
-      "line": 451,
+      "line": 197,
       "typeOnly": true
     },
     {
@@ -634,7 +310,7 @@
       "fromFile": "src/types.ts",
       "usedInFile": "src/analysis.ts",
       "usedInScope": "analyzeDependencyGraph",
-      "line": 452,
+      "line": 198,
       "typeOnly": true
     },
     {
@@ -642,39 +318,15 @@
       "fromFile": "src/types.ts",
       "usedInFile": "src/analysis.ts",
       "usedInScope": "analyzeDependencyGraph",
-      "line": 453,
+      "line": 199,
       "typeOnly": true
-    },
-    {
-      "importedSymbol": "AnalysisResult",
-      "fromFile": "src/types.ts",
-      "usedInFile": "src/analysis.ts",
-      "usedInScope": "analyzeDependencyGraph",
-      "line": 468,
-      "typeOnly": true
-    },
-    {
-      "importedSymbol": "EnvUsageResult",
-      "fromFile": "src/types.ts",
-      "usedInFile": "src/analysis.ts",
-      "usedInScope": "analyzeDependencyGraph",
-      "line": 491,
-      "typeOnly": true
-    },
-    {
-      "importedSymbol": "traceEnvUsage",
-      "fromFile": "src/envUsage.ts",
-      "usedInFile": "src/analysis.ts",
-      "usedInScope": "analyzeDependencyGraph",
-      "line": 491,
-      "typeOnly": false
     },
     {
       "importedSymbol": "SymbolUsageItem",
       "fromFile": "src/types.ts",
       "usedInFile": "src/analysis.ts",
       "usedInScope": "analyzeDependencyGraph",
-      "line": 494,
+      "line": 217,
       "typeOnly": true
     },
     {
@@ -682,7 +334,7 @@
       "fromFile": "src/symbolUsage.ts",
       "usedInFile": "src/analysis.ts",
       "usedInScope": "analyzeDependencyGraph",
-      "line": 494,
+      "line": 217,
       "typeOnly": false
     },
     {
@@ -782,190 +434,6 @@
       "typeOnly": true
     },
     {
-      "importedSymbol": "DeclaredEnvKey",
-      "fromFile": "src/types.ts",
-      "usedInFile": "src/envUsage.ts",
-      "usedInScope": "extractDeclaredEnvKeys",
-      "line": 46,
-      "typeOnly": true
-    },
-    {
-      "importedSymbol": "toPosixPath",
-      "fromFile": "src/scanner.ts",
-      "usedInFile": "src/envUsage.ts",
-      "usedInScope": "extractDeclaredEnvKeys",
-      "line": 81,
-      "typeOnly": false
-    },
-    {
-      "importedSymbol": "DeclaredEnvKey",
-      "fromFile": "src/types.ts",
-      "usedInFile": "src/envUsage.ts",
-      "usedInScope": "extractDeclaredEnvKeys",
-      "line": 106,
-      "typeOnly": true
-    },
-    {
-      "importedSymbol": "DirectUsagePattern",
-      "fromFile": "src/types.ts",
-      "usedInFile": "src/envUsage.ts",
-      "usedInScope": "<module>",
-      "line": 182,
-      "typeOnly": true
-    },
-    {
-      "importedSymbol": "GraphNode",
-      "fromFile": "src/types.ts",
-      "usedInFile": "src/envUsage.ts",
-      "usedInScope": "traceEnvUsage",
-      "line": 195,
-      "typeOnly": true
-    },
-    {
-      "importedSymbol": "GraphEdge",
-      "fromFile": "src/types.ts",
-      "usedInFile": "src/envUsage.ts",
-      "usedInScope": "traceEnvUsage",
-      "line": 196,
-      "typeOnly": true
-    },
-    {
-      "importedSymbol": "EnvUsageResult",
-      "fromFile": "src/types.ts",
-      "usedInFile": "src/envUsage.ts",
-      "usedInScope": "traceEnvUsage",
-      "line": 198,
-      "typeOnly": true
-    },
-    {
-      "importedSymbol": "loadTsConfig",
-      "fromFile": "src/tsconfig.ts",
-      "usedInFile": "src/envUsage.ts",
-      "usedInScope": "traceEnvUsage",
-      "line": 200,
-      "typeOnly": false
-    },
-    {
-      "importedSymbol": "GraphNode",
-      "fromFile": "src/types.ts",
-      "usedInFile": "src/envUsage.ts",
-      "usedInScope": "traceEnvUsage",
-      "line": 203,
-      "typeOnly": true
-    },
-    {
-      "importedSymbol": "DirectEnvUsage",
-      "fromFile": "src/types.ts",
-      "usedInFile": "src/envUsage.ts",
-      "usedInScope": "traceEnvUsage",
-      "line": 208,
-      "typeOnly": true
-    },
-    {
-      "importedSymbol": "DynamicAccess",
-      "fromFile": "src/types.ts",
-      "usedInFile": "src/envUsage.ts",
-      "usedInScope": "traceEnvUsage",
-      "line": 209,
-      "typeOnly": true
-    },
-    {
-      "importedSymbol": "toPosixPath",
-      "fromFile": "src/scanner.ts",
-      "usedInFile": "src/envUsage.ts",
-      "usedInScope": "traceEnvUsage",
-      "line": 232,
-      "typeOnly": false
-    },
-    {
-      "importedSymbol": "DirectUsagePattern",
-      "fromFile": "src/types.ts",
-      "usedInFile": "src/envUsage.ts",
-      "usedInScope": "traceEnvUsage",
-      "line": 297,
-      "typeOnly": true
-    },
-    {
-      "importedSymbol": "DirectUsagePattern",
-      "fromFile": "src/types.ts",
-      "usedInFile": "src/envUsage.ts",
-      "usedInScope": "handleDirectUsage",
-      "line": 324,
-      "typeOnly": true
-    },
-    {
-      "importedSymbol": "DirectEnvUsage",
-      "fromFile": "src/types.ts",
-      "usedInFile": "src/envUsage.ts",
-      "usedInScope": "traceEnvUsage",
-      "line": 442,
-      "typeOnly": true
-    },
-    {
-      "importedSymbol": "TransitiveEnvUsage",
-      "fromFile": "src/types.ts",
-      "usedInFile": "src/envUsage.ts",
-      "usedInScope": "traceEnvUsage",
-      "line": 455,
-      "typeOnly": true
-    },
-    {
-      "importedSymbol": "toPosixPath",
-      "fromFile": "src/scanner.ts",
-      "usedInFile": "src/envUsage.ts",
-      "usedInScope": "traceEnvUsage",
-      "line": 468,
-      "typeOnly": false
-    },
-    {
-      "importedSymbol": "resolveImportTarget",
-      "fromFile": "src/resolver.ts",
-      "usedInFile": "src/envUsage.ts",
-      "usedInScope": "traceEnvUsage",
-      "line": 476,
-      "typeOnly": false
-    },
-    {
-      "importedSymbol": "toPosixPath",
-      "fromFile": "src/scanner.ts",
-      "usedInFile": "src/envUsage.ts",
-      "usedInScope": "traceEnvUsage",
-      "line": 485,
-      "typeOnly": false
-    },
-    {
-      "importedSymbol": "resolveImportTarget",
-      "fromFile": "src/resolver.ts",
-      "usedInFile": "src/envUsage.ts",
-      "usedInScope": "traceEnvUsage",
-      "line": 600,
-      "typeOnly": false
-    },
-    {
-      "importedSymbol": "toPosixPath",
-      "fromFile": "src/scanner.ts",
-      "usedInFile": "src/envUsage.ts",
-      "usedInScope": "traceEnvUsage",
-      "line": 609,
-      "typeOnly": false
-    },
-    {
-      "importedSymbol": "EnvUsageItem",
-      "fromFile": "src/types.ts",
-      "usedInFile": "src/envUsage.ts",
-      "usedInScope": "traceEnvUsage",
-      "line": 636,
-      "typeOnly": true
-    },
-    {
-      "importedSymbol": "DynamicAccess",
-      "fromFile": "src/types.ts",
-      "usedInFile": "src/envUsage.ts",
-      "usedInScope": "traceEnvUsage",
-      "line": 652,
-      "typeOnly": true
-    },
-    {
       "importedSymbol": "buildDependencyGraph",
       "fromFile": "src/engine.ts",
       "usedInFile": "src/index.ts",
@@ -979,7 +447,7 @@
       "fromFile": "src/analysis.ts",
       "usedInFile": "src/index.ts",
       "usedInScope": "<module>",
-      "line": 3,
+      "line": 2,
       "typeOnly": false,
       "note": "Re-exported"
     },
@@ -988,52 +456,7 @@
       "fromFile": "src/analysis.ts",
       "usedInFile": "src/index.ts",
       "usedInScope": "<module>",
-      "line": 4,
-      "typeOnly": false,
-      "note": "Re-exported"
-    },
-    {
-      "importedSymbol": "detectOrphans",
-      "fromFile": "src/analysis.ts",
-      "usedInFile": "src/index.ts",
-      "usedInScope": "<module>",
-      "line": 5,
-      "typeOnly": false,
-      "note": "Re-exported"
-    },
-    {
-      "importedSymbol": "detectEntryPoints",
-      "fromFile": "src/analysis.ts",
-      "usedInFile": "src/index.ts",
-      "usedInScope": "<module>",
-      "line": 6,
-      "typeOnly": false,
-      "note": "Re-exported"
-    },
-    {
-      "importedSymbol": "computeCentrality",
-      "fromFile": "src/analysis.ts",
-      "usedInFile": "src/index.ts",
-      "usedInScope": "<module>",
-      "line": 7,
-      "typeOnly": false,
-      "note": "Re-exported"
-    },
-    {
-      "importedSymbol": "extractDeclaredEnvKeys",
-      "fromFile": "src/envUsage.ts",
-      "usedInFile": "src/index.ts",
-      "usedInScope": "<module>",
-      "line": 9,
-      "typeOnly": false,
-      "note": "Re-exported"
-    },
-    {
-      "importedSymbol": "traceEnvUsage",
-      "fromFile": "src/envUsage.ts",
-      "usedInFile": "src/index.ts",
-      "usedInScope": "<module>",
-      "line": 9,
+      "line": 2,
       "typeOnly": false,
       "note": "Re-exported"
     },
@@ -1042,7 +465,7 @@
       "fromFile": "src/symbolUsage.ts",
       "usedInFile": "src/index.ts",
       "usedInScope": "<module>",
-      "line": 10,
+      "line": 3,
       "typeOnly": false,
       "note": "Re-exported"
     },
@@ -1051,7 +474,7 @@
       "fromFile": "src/symbolUsage.ts",
       "usedInFile": "src/index.ts",
       "usedInScope": "<module>",
-      "line": 10,
+      "line": 3,
       "typeOnly": false,
       "note": "Re-exported"
     },
@@ -1060,7 +483,7 @@
       "fromFile": "src/symbolUsage.ts",
       "usedInFile": "src/index.ts",
       "usedInScope": "<module>",
-      "line": 10,
+      "line": 3,
       "typeOnly": false,
       "note": "Re-exported"
     },
@@ -1069,7 +492,7 @@
       "fromFile": "src/resolver.ts",
       "usedInFile": "src/index.ts",
       "usedInScope": "<module>",
-      "line": 11,
+      "line": 4,
       "typeOnly": false,
       "note": "Re-exported"
     },
@@ -1078,7 +501,7 @@
       "fromFile": "src/resolver.ts",
       "usedInFile": "src/index.ts",
       "usedInScope": "<module>",
-      "line": 11,
+      "line": 4,
       "typeOnly": false,
       "note": "Re-exported"
     },
@@ -1087,7 +510,16 @@
       "fromFile": "src/tsconfig.ts",
       "usedInFile": "src/index.ts",
       "usedInScope": "<module>",
-      "line": 12,
+      "line": 5,
+      "typeOnly": false,
+      "note": "Re-exported"
+    },
+    {
+      "importedSymbol": "loadTsConfigForFile",
+      "fromFile": "src/tsconfig.ts",
+      "usedInFile": "src/index.ts",
+      "usedInScope": "<module>",
+      "line": 5,
       "typeOnly": false,
       "note": "Re-exported"
     },
@@ -1096,7 +528,7 @@
       "fromFile": "src/tsconfig.ts",
       "usedInFile": "src/index.ts",
       "usedInScope": "<module>",
-      "line": 12,
+      "line": 5,
       "typeOnly": false,
       "note": "Re-exported"
     },
@@ -1105,7 +537,7 @@
       "fromFile": "src/scanner.ts",
       "usedInFile": "src/index.ts",
       "usedInScope": "<module>",
-      "line": 13,
+      "line": 6,
       "typeOnly": false,
       "note": "Re-exported"
     },
@@ -1114,7 +546,7 @@
       "fromFile": "src/scanner.ts",
       "usedInFile": "src/index.ts",
       "usedInScope": "<module>",
-      "line": 13,
+      "line": 6,
       "typeOnly": false,
       "note": "Re-exported"
     },
@@ -1123,7 +555,7 @@
       "fromFile": "src/scanner.ts",
       "usedInFile": "src/index.ts",
       "usedInScope": "<module>",
-      "line": 13,
+      "line": 6,
       "typeOnly": false,
       "note": "Re-exported"
     },
@@ -1132,7 +564,7 @@
       "fromFile": "src/types.ts",
       "usedInFile": "src/index.ts",
       "usedInScope": "<module>",
-      "line": 15,
+      "line": 8,
       "typeOnly": false,
       "note": "Re-exported"
     },
@@ -1141,7 +573,7 @@
       "fromFile": "src/types.ts",
       "usedInFile": "src/index.ts",
       "usedInScope": "<module>",
-      "line": 16,
+      "line": 9,
       "typeOnly": false,
       "note": "Re-exported"
     },
@@ -1150,7 +582,7 @@
       "fromFile": "src/types.ts",
       "usedInFile": "src/index.ts",
       "usedInScope": "<module>",
-      "line": 17,
+      "line": 10,
       "typeOnly": false,
       "note": "Re-exported"
     },
@@ -1159,7 +591,7 @@
       "fromFile": "src/types.ts",
       "usedInFile": "src/index.ts",
       "usedInScope": "<module>",
-      "line": 18,
+      "line": 11,
       "typeOnly": false,
       "note": "Re-exported"
     },
@@ -1168,7 +600,7 @@
       "fromFile": "src/types.ts",
       "usedInFile": "src/index.ts",
       "usedInScope": "<module>",
-      "line": 19,
+      "line": 12,
       "typeOnly": false,
       "note": "Re-exported"
     },
@@ -1177,43 +609,7 @@
       "fromFile": "src/types.ts",
       "usedInFile": "src/index.ts",
       "usedInScope": "<module>",
-      "line": 20,
-      "typeOnly": false,
-      "note": "Re-exported"
-    },
-    {
-      "importedSymbol": "EntryPoint",
-      "fromFile": "src/types.ts",
-      "usedInFile": "src/index.ts",
-      "usedInScope": "<module>",
-      "line": 21,
-      "typeOnly": false,
-      "note": "Re-exported"
-    },
-    {
-      "importedSymbol": "NodeCentralityFanIn",
-      "fromFile": "src/types.ts",
-      "usedInFile": "src/index.ts",
-      "usedInScope": "<module>",
-      "line": 22,
-      "typeOnly": false,
-      "note": "Re-exported"
-    },
-    {
-      "importedSymbol": "NodeCentralityFanOut",
-      "fromFile": "src/types.ts",
-      "usedInFile": "src/index.ts",
-      "usedInScope": "<module>",
-      "line": 23,
-      "typeOnly": false,
-      "note": "Re-exported"
-    },
-    {
-      "importedSymbol": "CentralityAnalysis",
-      "fromFile": "src/types.ts",
-      "usedInFile": "src/index.ts",
-      "usedInScope": "<module>",
-      "line": 24,
+      "line": 13,
       "typeOnly": false,
       "note": "Re-exported"
     },
@@ -1222,70 +618,7 @@
       "fromFile": "src/types.ts",
       "usedInFile": "src/index.ts",
       "usedInScope": "<module>",
-      "line": 25,
-      "typeOnly": false,
-      "note": "Re-exported"
-    },
-    {
-      "importedSymbol": "DeclaredEnvKey",
-      "fromFile": "src/types.ts",
-      "usedInFile": "src/index.ts",
-      "usedInScope": "<module>",
-      "line": 26,
-      "typeOnly": false,
-      "note": "Re-exported"
-    },
-    {
-      "importedSymbol": "DirectUsagePattern",
-      "fromFile": "src/types.ts",
-      "usedInFile": "src/index.ts",
-      "usedInScope": "<module>",
-      "line": 27,
-      "typeOnly": false,
-      "note": "Re-exported"
-    },
-    {
-      "importedSymbol": "DirectEnvUsage",
-      "fromFile": "src/types.ts",
-      "usedInFile": "src/index.ts",
-      "usedInScope": "<module>",
-      "line": 28,
-      "typeOnly": false,
-      "note": "Re-exported"
-    },
-    {
-      "importedSymbol": "TransitiveEnvUsage",
-      "fromFile": "src/types.ts",
-      "usedInFile": "src/index.ts",
-      "usedInScope": "<module>",
-      "line": 29,
-      "typeOnly": false,
-      "note": "Re-exported"
-    },
-    {
-      "importedSymbol": "EnvUsageItem",
-      "fromFile": "src/types.ts",
-      "usedInFile": "src/index.ts",
-      "usedInScope": "<module>",
-      "line": 30,
-      "typeOnly": false,
-      "note": "Re-exported"
-    },
-    {
-      "importedSymbol": "DynamicAccess",
-      "fromFile": "src/types.ts",
-      "usedInFile": "src/index.ts",
-      "usedInScope": "<module>",
-      "line": 31,
-      "typeOnly": false,
-      "note": "Re-exported"
-    },
-    {
-      "importedSymbol": "EnvUsageResult",
-      "fromFile": "src/types.ts",
-      "usedInFile": "src/index.ts",
-      "usedInScope": "<module>",
-      "line": 32,
+      "line": 14,
       "typeOnly": false,
       "note": "Re-exported"
     },
@@ -1294,7 +627,7 @@
       "fromFile": "src/types.ts",
       "usedInFile": "src/index.ts",
       "usedInScope": "<module>",
-      "line": 33,
+      "line": 15,
       "typeOnly": false,
       "note": "Re-exported"
     },
@@ -1313,6 +646,14 @@
       "usedInScope": "resolvePathAliases",
       "line": 64,
       "typeOnly": true
+    },
+    {
+      "importedSymbol": "loadTsConfigForFile",
+      "fromFile": "src/tsconfig.ts",
+      "usedInFile": "src/resolver.ts",
+      "usedInScope": "resolveImportTarget",
+      "line": 129,
+      "typeOnly": false
     },
     {
       "importedSymbol": "GraphNode",
@@ -1427,30 +768,6 @@
       "typeOnly": false
     },
     {
-      "importedSymbol": "buildDependencyGraph",
-      "fromFile": "src/index.ts",
-      "usedInFile": "test/envUsage.test.ts",
-      "usedInScope": "runEnvUsageTests",
-      "line": 9,
-      "typeOnly": false
-    },
-    {
-      "importedSymbol": "analyzeDependencyGraph",
-      "fromFile": "src/index.ts",
-      "usedInFile": "test/envUsage.test.ts",
-      "usedInScope": "runEnvUsageTests",
-      "line": 10,
-      "typeOnly": false
-    },
-    {
-      "importedSymbol": "serviceA",
-      "fromFile": "test/fixtures/analysis-project/src/services/serviceA.ts",
-      "usedInFile": "test/fixtures/analysis-project/src/cli.ts",
-      "usedInScope": "<module>",
-      "line": 3,
-      "typeOnly": false
-    },
-    {
       "importedSymbol": "two",
       "fromFile": "test/fixtures/analysis-project/src/cycle/node2.ts",
       "usedInFile": "test/fixtures/analysis-project/src/cycle/node1.ts",
@@ -1464,22 +781,6 @@
       "usedInFile": "test/fixtures/analysis-project/src/cycle/node2.ts",
       "usedInScope": "<module>",
       "line": 3,
-      "typeOnly": false
-    },
-    {
-      "importedSymbol": "routeHandler",
-      "fromFile": "test/fixtures/analysis-project/src/routes.ts",
-      "usedInFile": "test/fixtures/analysis-project/src/index.ts",
-      "usedInScope": "<module>",
-      "line": 3,
-      "typeOnly": false
-    },
-    {
-      "importedSymbol": "routeHandler",
-      "fromFile": "test/fixtures/analysis-project/src/routes.ts",
-      "usedInFile": "test/fixtures/analysis-project/src/server.ts",
-      "usedInScope": "<module>",
-      "line": 8,
       "typeOnly": false
     },
     {
@@ -1504,22 +805,6 @@
       "usedInFile": "test/fixtures/analysis-project/src/services/serviceC.ts",
       "usedInScope": "<module>",
       "line": 3,
-      "typeOnly": false
-    },
-    {
-      "importedSymbol": "dbUrl",
-      "fromFile": "test/fixtures/env-project/src/config.ts",
-      "usedInFile": "test/fixtures/env-project/src/db.ts",
-      "usedInScope": "connectDb",
-      "line": 4,
-      "typeOnly": false
-    },
-    {
-      "importedSymbol": "config",
-      "fromFile": "test/fixtures/env-project/src/config.ts",
-      "usedInFile": "test/fixtures/env-project/src/service.ts",
-      "usedInScope": "checkService",
-      "line": 4,
       "typeOnly": false
     },
     {

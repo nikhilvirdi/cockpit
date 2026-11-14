@@ -1,18 +1,32 @@
-### Cockpit
+## Cockpit
 
-Cockpit is a web app that generates an interactive dependency graph of a codebase. Point it at a GitHub repo URL or a local folder, and it parses the actual import statements, environment variable usage, and symbol references to build a ground truth map of how the project fits together.
+An interactive dependency explorer for source code repositories. Give it a public GitHub repo URL or a local project folder, and it builds a navigable graph of how the project's files and functions depend on each other, backed by source evidence you can inspect directly.
 
-The goal isn't to have an AI summarize your codebase in prose. It's to give you a graph you can trust and explore yourself: which files import what, where a given env variable actually gets used (including through re-exports and wrapper configs), which specific function in a file is the one using an import, where the circular dependencies are, and which files nothing else references.
+### What It Does
 
-Click a node and you get its fan in and fan out, its environment variable usage, and its import relationships. Click an edge and you get the exact symbols being used across it, down to the scope they're used in.
+- **File Dependency Graph:** Explore imports and other language-specific module dependencies across the whole project.
+- **Function Dependency Graph:** Trace resolvable calls between functions and methods, within a file or across folders.
+- **Dependency Inspection:** Select a relationship to see the exact symbol, the calling scope, and the source location behind it.
+- **Focused Navigation:** Search for a file or function, check its incoming and outgoing relationships, and expand the graph from there instead of staring at the whole thing at once.
+- **Circular Dependencies:** Cycles in the resolved file graph get flagged and highlighted.
 
-#### Stack
+### How It Works
 
-| Layer | Tech |
+Cockpit never runs the code. It reads it. Language-aware analyzers resolve declarations and references, and a separate syntax pass picks out imports, function scopes, and call expressions.
+
+Both kinds of evidence get combined into one dependency graph, then rendered as something interactive. A relationship that can't be resolved with real confidence is marked unresolved instead of guessed.
+
+### Technology Stack
+
+| Layer | Technologies |
 |---|---|
-| Core engine | TypeScript, ts-morph |
-| Backend | Node.js, Express, simple-git |
-| Frontend | React, Vite, Cytoscape.js (Reagraph under evaluation) |
+| Frontend | React, TypeScript, Vite |
+| Graph Visualization | Cytoscape.js, ELK |
+| Backend | Node.js, Express |
+| Repository & Folder Input | simple-git, JSZip, Multer, yauzl |
+| Code Analysis | ts-morph, SCIP indexers, Tree-sitter |
 | Monorepo | npm workspaces |
 
-Still in development.
+### Language Support
+
+**JavaScript, TypeScript, Python, Go, Java, C, and C++**.

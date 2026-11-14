@@ -1,6 +1,0 @@
-{
-  "name": "analysis-fixture",
-  "version": "1.0.0",
-  "main": "src/server.ts",
-  "bin": "./src/cli.ts"
-}

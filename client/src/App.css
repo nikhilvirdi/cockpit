@@ -16,7 +16,6 @@
 
   /* Cockpit Application Surface Mapping */
   --bg-app: var(--bg-canvas);
-  --bg-header: var(--node-bg);
   --bg-surface: var(--node-bg);
   --bg-surface-elevated: #1e1e1e;
   --bg-input: #0a0a0a;
@@ -32,7 +31,6 @@
   --text-cell: #c8c8c8;
   --text-inverse: #000000;
 
-  --accent-attention: var(--accent-warning);
   --accent-secondary: var(--accent-info);
 
   /* 6. TYPOGRAPHY: Nunito 400/500/600/700 for node/UI text, Jost 400/600 for headers */
@@ -70,7 +68,6 @@
   --accent-info: #0969da;
 
   --bg-app: var(--bg-canvas);
-  --bg-header: var(--node-bg);
   --bg-surface: var(--node-bg);
   --bg-surface-elevated: #ffffff;
   --bg-input: #ffffff;
@@ -150,26 +147,6 @@ h1, h2, h3, h4, h5, h6 {
   background: #484F58;
 }
 
-/* Header */
-.app-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: var(--bg-header);
-  border-bottom: 1px solid var(--border-default);
-  flex-shrink: 0;
-  padding: 8px 14px;
-  gap: 12px;
-  z-index: 20;
-}
-
-.header-stats-bar {
-  display: flex;
-  align-items: center;
-  margin-left: auto;
-  flex-wrap: wrap;
-}
-
 /* Sidebar Brand Logo */
 .sidebar-brand-container {
   display: flex;
@@ -187,29 +164,6 @@ h1, h2, h3, h4, h5, h6 {
   max-height: 110px;
   display: block;
   object-fit: contain;
-}
-
-.source-badge {
-  font-size: 10px;
-  font-weight: 500;
-  color: var(--text-secondary);
-  background: var(--bg-surface);
-  border: 1px solid var(--border-default);
-  padding: 2px 6px;
-  border-radius: 3px;
-  max-width: 240px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-family: var(--font-mono);
-}
-
-/* Metric Badges in Header */
-.metrics-group {
-  display: flex;
-  gap: 4px;
-  flex-wrap: wrap;
-  align-items: center;
 }
 
 .metric-pill {
@@ -243,34 +197,6 @@ h1, h2, h3, h4, h5, h6 {
 }
 .metric-pill.danger strong {
   color: var(--accent-error);
-}
-
-.metric-pill.warning {
-  background: var(--bg-surface);
-  border-color: var(--accent-warning);
-  color: var(--accent-warning);
-  box-shadow: none;
-}
-.metric-pill.warning strong {
-  color: var(--accent-warning);
-}
-
-.metric-pill.info {
-  background: var(--bg-surface);
-  border-color: var(--border-default);
-  color: var(--text-secondary);
-  box-shadow: none;
-}
-.metric-pill.info strong {
-  color: var(--accent-info);
-}
-
-.metric-pill.clickable {
-  cursor: pointer;
-  user-select: none;
-}
-.metric-pill.clickable:hover {
-  border-color: var(--accent-primary);
 }
 
 /* Inputs & Search */
@@ -592,7 +518,7 @@ h1, h2, h3, h4, h5, h6 {
   font-family: var(--font-data);
 }
 
-/* Symbol & Env Badges */
+/* Symbol Badges */
 .badge-runtime {
   background: var(--bg-input);
   border: 1px solid var(--border-default);
@@ -613,7 +539,7 @@ h1, h2, h3, h4, h5, h6 {
   font-family: var(--font-mono);
 }
 
-/* Symbol & Env Badges */
+/* Symbol Badges */
 .badge-runtime {
   background: var(--bg-input);
   border: 1px solid var(--border-default);
@@ -628,26 +554,6 @@ h1, h2, h3, h4, h5, h6 {
   background: var(--bg-input);
   border: 1px dashed var(--border-default);
   color: var(--text-muted);
-  font-size: 10px;
-  padding: 1px 5px;
-  border-radius: var(--radius-sm);
-  font-family: var(--font-mono);
-}
-
-.badge-env-direct {
-  background: var(--bg-input);
-  border: 1px solid var(--accent-warning);
-  color: var(--accent-warning);
-  font-size: 10px;
-  padding: 1px 5px;
-  border-radius: var(--radius-sm);
-  font-family: var(--font-mono);
-}
-
-.badge-env-transitive {
-  background: var(--bg-input);
-  border: 1px solid var(--border-default);
-  color: var(--text-secondary);
   font-size: 10px;
   padding: 1px 5px;
   border-radius: var(--radius-sm);
@@ -689,31 +595,6 @@ h1, h2, h3, h4, h5, h6 {
   font-family: var(--font-data);
 }
 
-/* Env Usage Row */
-.env-usage-row {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  padding: 5px 8px;
-  background: var(--bg-input);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-sm);
-  font-family: var(--font-data);
-}
-.env-usage-row.clickable:hover {
-  border-color: var(--accent-warning);
-}
-.env-key-name {
-  font-family: var(--font-mono);
-  font-weight: 600;
-  color: var(--text-primary);
-  font-size: 11px;
-}
-.env-chain {
-  font-size: 10px;
-  color: var(--text-muted);
-  font-family: var(--font-data);
-}
 .via-link {
   color: var(--accent-info);
   cursor: pointer;
@@ -723,44 +604,4 @@ h1, h2, h3, h4, h5, h6 {
 }
 .via-link:hover {
   color: var(--text-primary);
-}
-
-/* Dialog / Modal for Dynamic Accesses or Config */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.85);
-  z-index: 100;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-  font-family: var(--font-data);
-}
-.modal-card {
-  background: var(--bg-surface);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius);
-  box-shadow: none;
-  width: 100%;
-  max-width: 560px;
-  max-height: 80vh;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-.modal-header {
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--border-default);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-family: var(--font-data);
-}
-.modal-body {
-  padding: 14px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
 }

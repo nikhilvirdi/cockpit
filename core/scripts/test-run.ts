@@ -57,7 +57,6 @@ function main() {
     console.log('\n================ Graph Analysis Summary ==================');
     const { analysis } = graph;
 
-    // 1. Cycles
     console.log(`Cycles detected: ${analysis.cycles.length}`);
     if (analysis.cycles.length > 0) {
       const exampleCycle = analysis.cycles[0];
@@ -65,81 +64,6 @@ function main() {
       console.log(`  Example cycle: ${cycleString}`);
     }
 
-    // 2. Orphans
-    console.log(`\nOrphan files: ${analysis.orphans.length}`);
-    if (analysis.orphans.length > 0) {
-      analysis.orphans.forEach((orphan, i) => {
-        console.log(`  [${i + 1}] ${orphan}`);
-      });
-    }
-
-    // 3. Entry Points
-    console.log(`\nEntry points detected: ${analysis.entryPoints.length}`);
-    if (analysis.entryPoints.length > 0) {
-      analysis.entryPoints.forEach((ep, i) => {
-        console.log(`  [${i + 1}] ${ep.id} (${ep.reason})`);
-      });
-    }
-
-    // 4. Centrality (Top 3 fan-in / fan-out)
-    console.log('\nCentrality Metrics:');
-    const topFanIn3 = analysis.centrality.topFanIn.slice(0, 3);
-    console.log('  Top Fan-In (most depended upon):');
-    if (topFanIn3.length > 0) {
-      topFanIn3.forEach((item, i) => {
-        console.log(`    [${i + 1}] ${item.id} (fan-in: ${item.fanIn})`);
-      });
-    } else {
-      console.log('    None');
-    }
-
-    const topFanOut3 = analysis.centrality.topFanOut.slice(0, 3);
-    console.log('  Top Fan-Out (most dependencies):');
-    if (topFanOut3.length > 0) {
-      topFanOut3.forEach((item, i) => {
-        console.log(`    [${i + 1}] ${item.id} (fan-out: ${item.fanOut})`);
-      });
-    } else {
-      console.log('    None');
-    }
-
-    // 5. Env Usage Tracing Summary
-    console.log('\n================ Env Usage Tracing Summary ===============');
-    const { envUsage } = graph;
-    const directUsages = (envUsage?.usages || []).filter(u => u.kind === 'direct');
-    const transitiveUsages = (envUsage?.usages || []).filter(u => u.kind === 'transitive');
-    const declaredKeys = envUsage?.declaredKeys || [];
-    const dynamicAccesses = envUsage?.dynamicAccesses || [];
-
-    console.log(`Declared keys count: ${declaredKeys.length}`);
-    if (declaredKeys.length > 0) {
-      declaredKeys.forEach((d, i) => {
-        console.log(`  [${i + 1}] ${d.key} (in: ${d.declaredIn.join(', ')})`);
-      });
-    }
-
-    console.log(`\nDirect usage count: ${directUsages.length}`);
-    if (directUsages.length > 0) {
-      directUsages.forEach((u, i) => {
-        console.log(`  [${i + 1}] ${u.key} in ${u.file} (${u.pattern})`);
-      });
-    }
-
-    console.log(`\nTransitive usage count: ${transitiveUsages.length}`);
-    if (transitiveUsages.length > 0) {
-      transitiveUsages.forEach((u, i) => {
-        console.log(`  [${i + 1}] ${u.key} in ${u.file} (via ${u.via})`);
-      });
-    }
-
-    console.log(`\nDynamic access count: ${dynamicAccesses.length}`);
-    if (dynamicAccesses.length > 0) {
-      dynamicAccesses.forEach((d, i) => {
-        console.log(`  [${i + 1}] ${d.file}: ${d.note}`);
-      });
-    }
-
-    // 6. Symbol-Level Usage Precision Summary
     console.log('\n============== Symbol-Level Usage Precision ==============');
     const symbolUsages = graph.symbolUsage || [];
     console.log(`Total symbol usages found: ${symbolUsages.length}`);

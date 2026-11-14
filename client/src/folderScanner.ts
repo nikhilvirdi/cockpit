@@ -13,14 +13,12 @@ const ALLOWED_EXTENSIONS = new Set([
   '.cts'
 ]);
 
-const ALLOWED_CONFIG_FILES = new Set(['package.json', 'index.html']);
-
 export function isAllowedFile(name: string): boolean {
   if (name.endsWith('.d.ts') || name.endsWith('.d.mts') || name.endsWith('.d.cts')) {
     return false;
   }
   const lower = name.toLowerCase();
-  if (ALLOWED_CONFIG_FILES.has(lower)) {
+  if (lower === 'package.json') {
     return true;
   }
   if (lower.startsWith('tsconfig') && lower.endsWith('.json')) {

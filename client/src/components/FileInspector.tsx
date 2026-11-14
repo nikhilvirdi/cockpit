@@ -1,32 +1,24 @@
-import type { SelectedNodeInfo, SelectedEdgeInfo, SymbolUsageItem, GraphData, EnvUsageItem } from '../types';
+import type { SelectedNodeInfo, SelectedEdgeInfo, SymbolUsageItem } from '../types';
 
 interface FileInspectorProps {
   selectedNode: SelectedNodeInfo | null;
   selectedEdge: SelectedEdgeInfo | null;
-  graphData: GraphData;
-  nodeEnvUsageMap: Map<string, EnvUsageItem[]>;
   symbolUsageByEdgeMap: Map<string, SymbolUsageItem[]>;
   onCloseNode: () => void;
   onCloseEdge: () => void;
   onFocusNode: (nodeId: string) => void;
   onSelectEdge: (edgeKey: string) => void;
-  onSetEnvFilter: (key: string) => void;
 }
 
 export default function FileInspector({
   selectedNode,
   selectedEdge,
-  graphData,
-  nodeEnvUsageMap,
   symbolUsageByEdgeMap,
   onCloseNode,
   onCloseEdge,
   onFocusNode,
   onSelectEdge,
-  onSetEnvFilter,
 }: FileInspectorProps) {
-  const selectedNodeEnvUsages = selectedNode ? (nodeEnvUsageMap.get(selectedNode.id) || []) : [];
-
   if (selectedNode) {
     return (
       <aside className="side-panel">
@@ -47,57 +39,7 @@ export default function FileInspector({
             <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
               {selectedNode.fullPath}
             </div>
-            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: '4px' }}>
-              {selectedNode.isEntryPoint && (
-                <span className="metric-pill warning">Entry Point ({selectedNode.entryPointReason})</span>
-              )}
-              {selectedNode.isCycle && <span className="metric-pill danger">Cycle Member</span>}
-              {selectedNode.isOrphan && <span className="metric-pill">Orphan</span>}
-              <span className="metric-pill">Fan-In: {selectedNode.fanIn}</span>
-              <span className="metric-pill">Fan-Out: {selectedNode.fanOut}</span>
-            </div>
-          </div>
-
-          {/* Environment Variables Usage Card */}
-          <div className="inspector-card" id="node-env-usage-card">
-            <div className="card-title">
-              <span>Environment Variables ({selectedNodeEnvUsages.length})</span>
-              {selectedNodeEnvUsages.length > 0 && <span className="badge-env-direct">Active</span>}
-            </div>
-            {selectedNodeEnvUsages.length > 0 ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                {selectedNodeEnvUsages.map((env, i) => (
-                  <div key={i} className="env-usage-row">
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <span className="env-key-name">{env.key}</span>
-                      <span className={env.kind === 'direct' ? 'badge-env-direct' : 'badge-env-transitive'}>
-                        {env.kind === 'direct' ? 'Direct' : 'Transitive'}
-                      </span>
-                    </div>
-                    {env.kind === 'direct' ? (
-                      <div className="env-chain">
-                        Pattern: <strong style={{ color: 'var(--text-primary)' }}>{env.pattern}</strong>
-                      </div>
-                    ) : (
-                      <div className="env-chain">
-                        Transitive via:{' '}
-                        <span
-                          className="via-link"
-                          onClick={() => onFocusNode(env.via)}
-                          title="Click to inspect supplier in graph"
-                        >
-                          {env.via}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                No environment variables referenced directly or transitively in this file.
-              </div>
-            )}
+            {selectedNode.isCycle && <span className="metric-pill danger">Cycle Member</span>}
           </div>
 
           {/* Outgoing Imports Card */}
@@ -326,41 +268,6 @@ export default function FileInspector({
             Select a file node or import edge to inspect details.
           </div>
         </div>
-
-        {/* Declared Config Keys Card */}
-        {(graphData.envUsage?.declaredKeys?.length || 0) > 0 && (
-          <div className="inspector-card">
-            <div className="card-title">
-              <span>Declared Config ({graphData.envUsage?.declaredKeys.length})</span>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              {graphData.envUsage?.declaredKeys.map((dk, i) => {
-                const isUsed = (graphData.envUsage?.usages || []).some(u => u.key === dk.key);
-                return (
-                  <div
-                    key={i}
-                    className="env-usage-row clickable"
-                    style={{ cursor: 'pointer' }}
-                    onClick={() => onSetEnvFilter(dk.key)}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <span className="env-key-name">{dk.key}</span>
-                      <span
-                        className={isUsed ? 'badge-runtime' : 'badge-env-direct'}
-                        style={{ color: isUsed ? 'var(--text-muted)' : 'var(--accent-warning)', borderColor: isUsed ? 'var(--border-default)' : 'var(--accent-warning)' }}
-                      >
-                        {isUsed ? 'Referenced' : 'Unused'}
-                      </span>
-                    </div>
-                    <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-                      Declared in: {dk.declaredIn.join(', ')}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
       </div>
     </aside>
   );

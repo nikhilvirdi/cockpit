@@ -13,17 +13,10 @@ interface SidebarProps {
   // Search + filters
   searchQuery: string;
   onSetSearchQuery: (q: string) => void;
-  selectedEnvFilter: string;
-  onSetEnvFilter: (k: string) => void;
   selectedCycleFilter: string;
   onSetCycleFilter: (v: string) => void;
-  hideOrphans: boolean;
-  onToggleHideOrphans: () => void;
-  entryPathFocus: boolean;
-  onToggleEntryPathFocus: () => void;
   showLegend: boolean;
   onToggleLegend: () => void;
-  allEnvKeys: string[];
   graphData: GraphData;
 
   // Zoom controls
@@ -42,17 +35,10 @@ export default function Sidebar({
   onPickLocalFolder,
   searchQuery,
   onSetSearchQuery,
-  selectedEnvFilter,
-  onSetEnvFilter,
   selectedCycleFilter,
   onSetCycleFilter,
-  hideOrphans,
-  onToggleHideOrphans,
-  entryPathFocus,
-  onToggleEntryPathFocus,
   showLegend,
   onToggleLegend,
-  allEnvKeys,
   graphData,
   onFit,
   onZoomIn,
@@ -204,31 +190,8 @@ export default function Sidebar({
         </div>
       </div>
 
-      {/* Env Variable Filter */}
-      <div className="sidebar-section">
-        <div className="sidebar-section-title">Environment Variable</div>
-        <select
-          id="env-key-filter"
-          className="select-filter"
-          value={selectedEnvFilter}
-          onChange={(e) => onSetEnvFilter(e.target.value)}
-          style={{
-            width: '100%',
-            borderColor: selectedEnvFilter !== 'none' ? 'var(--accent-warning)' : undefined,
-            color: selectedEnvFilter !== 'none' ? 'var(--accent-warning)' : undefined,
-          }}
-        >
-          <option value="none">All (No Filter)</option>
-          {allEnvKeys.map(k => (
-            <option key={k} value={k}>
-              {k}
-            </option>
-          ))}
-        </select>
-      </div>
-
       {/* Cycle Filter */}
-      {(graphData.analysis?.cycles?.length || 0) > 0 && (
+      {graphData.analysis.cycles.length > 0 && (
         <div className="sidebar-section">
           <div className="sidebar-section-title">Cycle Filter</div>
           <select
@@ -242,7 +205,7 @@ export default function Sidebar({
               color: selectedCycleFilter !== 'all' ? 'var(--accent-warning)' : undefined,
             }}
           >
-            <option value="all">All Cycles ({graphData.analysis?.cycles?.length})</option>
+            <option value="all">All Cycles ({graphData.analysis.cycles.length})</option>
             {graphData.analysis.cycles.map((cycle, idx) => (
               <option key={idx} value={String(idx)}>
                 Cycle {idx + 1} ({cycle.length} files)
@@ -251,30 +214,6 @@ export default function Sidebar({
           </select>
         </div>
       )}
-
-      {/* Display Options */}
-      <div className="sidebar-section">
-        <div className="sidebar-section-title">Display Options</div>
-        <button
-          type="button"
-          id="toggle-hide-orphans"
-          className={`filter-toggle ${hideOrphans ? 'active' : ''}`}
-          onClick={onToggleHideOrphans}
-          style={{ width: '100%', justifyContent: 'center' }}
-        >
-          {hideOrphans ? 'Orphans Hidden' : 'Hide Orphans'}
-        </button>
-        <button
-          type="button"
-          id="toggle-entry-path-focus"
-          className={`filter-toggle ${entryPathFocus ? 'active' : ''}`}
-          onClick={onToggleEntryPathFocus}
-          title="Filter to only entry point files and their direct outgoing imports"
-          style={{ width: '100%', justifyContent: 'center' }}
-        >
-          {entryPathFocus ? 'Entry Focused' : 'Focus Entry Points'}
-        </button>
-      </div>
 
       {/* Zoom Controls */}
       <div className="sidebar-section">
@@ -315,35 +254,19 @@ export default function Sidebar({
                   <span>Standard</span>
                 </div>
                 <div className="legend-item">
-                  <span className="legend-dot" style={{ background: 'var(--node-bg)', border: '1px solid var(--node-border)', transform: 'rotate(45deg)', borderRadius: '1px' }} />
-                  <span>Entry Point</span>
-                </div>
-                <div className="legend-item">
-                  <span className="legend-dot" style={{ background: 'rgba(22, 22, 22, 0.5)', border: '1px dashed var(--text-muted)', borderRadius: '2px' }} />
-                  <span>Orphan</span>
-                </div>
-                <div className="legend-item">
                   <span className="legend-dot" style={{ background: 'var(--node-bg)', border: '1px solid var(--accent-error)', borderRadius: '2px' }} />
                   <span>Cycle</span>
                 </div>
               </div>
             </div>
 
-            {/* Edges Group (5 edge types) */}
+            {/* Edges Group */}
             <div className="sidebar-legend-group">
               <div className="sidebar-legend-title">Edges</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
                 <div className="legend-item">
-                  <span className="legend-line" style={{ background: 'var(--connector-line)', height: '1.5px' }} />
-                  <span>Import (default)</span>
-                </div>
-                <div className="legend-item">
                   <span className="legend-line" style={{ background: 'var(--accent-info)', height: '1.5px' }} />
                   <span>Symbol Usage</span>
-                </div>
-                <div className="legend-item">
-                  <span className="legend-line" style={{ borderTop: '1.5px dashed var(--accent-warning)' }} />
-                  <span>Env Usage</span>
                 </div>
                 <div className="legend-item">
                   <span className="legend-line" style={{ borderTop: '1.5px dashed var(--accent-error)' }} />

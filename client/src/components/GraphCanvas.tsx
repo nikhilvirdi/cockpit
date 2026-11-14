@@ -12,9 +12,6 @@ interface GraphCanvasProps {
   graphData: GraphData;
   cycleNodesSet: Set<string>;
   cycleEdgesSet: Set<string>;
-  envUsageEdgesSet: Set<string>;
-  orphanSet: Set<string>;
-  entryPointMap: Map<string, string>;
   incomingMap: Map<string, string[]>;
   outgoingMap: Map<string, string[]>;
   symbolUsageByEdgeMap: Map<string, SymbolUsageItem[]>;
@@ -31,7 +28,7 @@ interface GraphCanvasProps {
  * until zero overlap remains.
  */
 function enforceZeroOverlap(cyInstance: Core) {
-  const nodes = cyInstance.nodes().filter((n: any) => !n.hasClass('hidden')).toArray();
+  const nodes = cyInstance.nodes().toArray();
   if (nodes.length <= 1) return;
 
   const PADDING = 20; // visual buffer between node bounding boxes
@@ -39,22 +36,10 @@ function enforceZeroOverlap(cyInstance: Core) {
 
   // Pre-calculate effective dynamic dimensions and current positions
   const nodeData = nodes.map((n: any) => {
-    const isEntryPoint = n.hasClass('entry-point-node') || Boolean(n.data('isEntryPoint'));
     const label = n.data('label') || '';
-
-    let dynW: number;
-    let dynH: number;
-
-    if (isEntryPoint) {
-      // Entry point node: diamond inside 160px x 160px box
-      dynW = 160;
-      dynH = 160;
-    } else {
-      // Standard file node: min-w 190px max-w 280px
-      dynW = Math.max(190, Math.min(280, label.length * 10 + 40));
-      const lines = Math.ceil((label.length * 9.5) / 240);
-      dynH = Math.max(50, Math.min(84, 34 + lines * 18));
-    }
+    const dynW = Math.max(190, Math.min(280, label.length * 10 + 40));
+    const lines = Math.ceil((label.length * 9.5) / 240);
+    const dynH = Math.max(50, Math.min(84, 34 + lines * 18));
 
     const w = Math.max(n.outerWidth() || 0, dynW) + PADDING;
     const h = Math.max(n.outerHeight() || 0, dynH) + PADDING;
@@ -117,9 +102,6 @@ export default function GraphCanvas({
   graphData,
   cycleNodesSet,
   cycleEdgesSet,
-  envUsageEdgesSet,
-  orphanSet,
-  entryPointMap,
   incomingMap,
   outgoingMap,
   symbolUsageByEdgeMap,
@@ -138,16 +120,7 @@ export default function GraphCanvas({
     // Build Nodes
     for (const node of graphData.nodes || []) {
       const isCycle = cycleNodesSet.has(node.id);
-      const isOrphan = orphanSet.has(node.id);
-      const isEntryPoint = entryPointMap.has(node.id);
       const label = node.id.split('/').pop() || node.id;
-      const fanIn = incomingMap.get(node.id)?.length || 0;
-      const fanOut = outgoingMap.get(node.id)?.length || 0;
-
-      const classes: string[] = [];
-      if (isCycle) classes.push('cycle-node');
-      if (isOrphan) classes.push('orphan-node');
-      if (isEntryPoint) classes.push('entry-point-node');
 
       elements.push({
         group: 'nodes',
@@ -155,45 +128,26 @@ export default function GraphCanvas({
           id: node.id,
           label,
           fullPath: node.path,
-          fanIn,
-          fanOut,
           isCycle,
-          isOrphan,
-          isEntryPoint,
-          entryPointReason: entryPointMap.get(node.id) || '',
           incoming: incomingMap.get(node.id) || [],
           outgoing: outgoingMap.get(node.id) || [],
         },
-        classes: classes.join(' '),
+        classes: isCycle ? 'cycle-node' : '',
       });
     }
 
-    // Build Edges with 5 Edge Types
+    // Build edges
     for (const edge of graphData.edges || []) {
       const edgeKey = `${edge.from}->${edge.to}`;
       const isCycle = cycleEdgesSet.has(edgeKey);
-      const isEnvUsage = envUsageEdgesSet.has(edgeKey);
       const symbols = symbolUsageByEdgeMap.get(edgeKey) || [];
-      const hasSymbols = symbols.length > 0;
-      const isTypeOnly = hasSymbols && symbols.every(s => s.typeOnly);
-      const hasRuntimeSymbols = hasSymbols && symbols.some(s => !s.typeOnly);
-
-      const classes: string[] = [];
+      let edgeClass = 'untraced-edge';
       if (isCycle) {
-        // 1. Cycle edges: dashed '6 4', 1.5px, var(--accent-error)
-        classes.push('cycle-edge');
-      } else if (isEnvUsage) {
-        // 2. Env-usage edges: dashed '6 4', 1.5px, var(--accent-warning)
-        classes.push('env-usage-edge');
-      } else if (hasRuntimeSymbols) {
-        // 3. Symbol-usage edges: solid, 1.5px, var(--accent-info)
-        classes.push('symbol-usage-edge');
-      } else if (isTypeOnly || !hasSymbols) {
-        // 4. Type-only or untraced edges: dashed '6 4', 1.5px, var(--text-muted)
-        classes.push(isTypeOnly ? 'type-only-edge' : 'untraced-edge');
-      } else {
-        // 5. Import (traced, default flow): solid, 1.5px, var(--connector-line)
-        classes.push('import-edge');
+        edgeClass = 'cycle-edge';
+      } else if (symbols.some(s => !s.typeOnly)) {
+        edgeClass = 'symbol-usage-edge';
+      } else if (symbols.length > 0) {
+        edgeClass = 'type-only-edge';
       }
 
       elements.push({
@@ -203,12 +157,8 @@ export default function GraphCanvas({
           source: edge.from,
           target: edge.to,
           isCycle,
-          isEnvUsage,
-          hasSymbols,
-          isTypeOnly,
-          symbolCount: symbols.length,
         },
-        classes: classes.join(' '),
+        classes: edgeClass,
       });
     }
 
@@ -253,27 +203,6 @@ export default function GraphCanvas({
             'transition-timing-function': 'ease-out',
           },
         },
-        // ── Entry Point Node: diamond 113x113 in 160x160 box, same border/bg tokens, bold text
-        {
-          selector: 'node.entry-point-node',
-          style: {
-            shape: 'diamond',
-            width: 160,
-            height: 160,
-            'border-width': 1,
-            'border-color': '#ffffff',
-            'border-opacity': 1,
-            'background-color': '#161616',
-            color: '#f0f0f0',
-            'font-weight': 700,
-            'font-size': '15px',
-            'font-family': 'Nunito, -apple-system, BlinkMacSystemFont, sans-serif',
-            'text-valign': 'center',
-            'text-halign': 'center',
-            'text-wrap': 'wrap',
-            'text-max-width': '100px',
-          },
-        },
         // ── Cycle Node
         {
           selector: 'node.cycle-node',
@@ -286,25 +215,6 @@ export default function GraphCanvas({
             'border-opacity': 1,
             color: '#f85149',
             'font-weight': 600,
-            'font-family': 'Nunito, -apple-system, BlinkMacSystemFont, sans-serif',
-          },
-        },
-        // ── Orphan Node: dashed border var(--text-muted), fill opacity ~0.5
-        {
-          selector: 'node.orphan-node',
-          style: {
-            shape: 'round-rectangle',
-            'corner-radius': '6px',
-            'background-color': '#161616',
-            'background-opacity': 0.5,
-            'border-color': '#8a8a8a', // var(--text-muted)
-            'border-style': 'dashed',
-            'border-dash-pattern': [6, 4],
-            'border-width': 1,
-            'border-opacity': 0.8,
-            color: '#8a8a8a',
-            'font-size': '15px',
-            'font-weight': 500,
             'font-family': 'Nunito, -apple-system, BlinkMacSystemFont, sans-serif',
           },
         },
@@ -337,19 +247,6 @@ export default function GraphCanvas({
             'z-index': 95,
           },
         },
-        // Env active highlight
-        {
-          selector: 'node.env-active',
-          style: {
-            'border-width': 1,
-            'border-color': '#d29922', // var(--accent-warning)
-            'border-opacity': 1,
-            'underlay-color': '#d29922',
-            'underlay-padding': 1,
-            'underlay-opacity': 0.6,
-            'z-index': 80,
-          },
-        },
         // Search match
         {
           selector: 'node.search-match',
@@ -365,9 +262,8 @@ export default function GraphCanvas({
         },
         // Dimmed nodes (opacity 0.3)
         { selector: 'node.dimmed', style: { opacity: 0.3 } },
-        { selector: 'node.hidden', style: { display: 'none' } },
 
-        // ── 2. EDGE COLOR-TO-MEANING MAPPING (5 Edge Types)
+        // Dependency edge styles
         // Base edge settings (all arrowheads: solid triangle matching edge stroke color)
         {
           selector: 'edge',
@@ -386,21 +282,9 @@ export default function GraphCanvas({
             'transition-timing-function': 'ease-out',
           },
         },
-        // 1) Import (traced, default flow): solid, 1.5px, var(--connector-line) [#ffffff]
+        // Symbol-usage edges: solid, 1.5px, var(--accent-info) [#58a6ff]
         {
-          selector: 'edge.import-edge',
-          style: {
-            width: 1.5,
-            'line-color': '#ffffff',
-            'target-arrow-color': '#ffffff',
-            'line-style': 'solid',
-            opacity: 1,
-            'z-index': 3,
-          },
-        },
-        // 2) Symbol-usage edges: solid, 1.5px, var(--accent-info) [#58a6ff]
-        {
-          selector: 'edge.symbol-usage-edge, edge.traced-edge',
+          selector: 'edge.symbol-usage-edge',
           style: {
             width: 1.5,
             'line-color': '#58a6ff',
@@ -410,20 +294,7 @@ export default function GraphCanvas({
             'z-index': 4,
           },
         },
-        // 3) Env-usage edges: dashed '6 4', 1.5px, var(--accent-warning) [#d29922]
-        {
-          selector: 'edge.env-usage-edge',
-          style: {
-            width: 1.5,
-            'line-color': '#d29922',
-            'target-arrow-color': '#d29922',
-            'line-style': 'dashed',
-            'line-dash-pattern': [6, 4],
-            opacity: 1,
-            'z-index': 5,
-          },
-        },
-        // 4) Cycle edges: dashed '6 4', 1.5px, var(--accent-error) [#f85149]
+        // Cycle edges: dashed '6 4', 1.5px, var(--accent-error) [#f85149]
         {
           selector: 'edge.cycle-edge',
           style: {
@@ -436,7 +307,7 @@ export default function GraphCanvas({
             'z-index': 10,
           },
         },
-        // 5) Type-only / untraced edges: dashed '6 4', 1.5px, var(--text-muted) [#8a8a8a]
+        // Type-only / untraced edges: dashed '6 4', 1.5px, var(--text-muted) [#8a8a8a]
         {
           selector: 'edge.type-only-edge, edge.untraced-edge',
           style: {
@@ -460,7 +331,6 @@ export default function GraphCanvas({
         },
         // Dimmed edges (opacity 0.3)
         { selector: 'edge.dimmed', style: { opacity: 0.3 } },
-        { selector: 'edge.hidden', style: { display: 'none' } },
       ],
       layout: { name: 'null' },
       minZoom: 0.2,
@@ -500,7 +370,7 @@ export default function GraphCanvas({
     layout.run();
     runPostLayoutPass();
 
-    // Node tap handler (powers focus + neighbor + blast-radius highlighting)
+    // Node tap handler
     cy.on('tap', 'node', (evt: EventObject) => {
       const node = evt.target as cytoscape.NodeSingular;
       const data = node.data() as SelectedNodeInfo;
@@ -513,7 +383,7 @@ export default function GraphCanvas({
         const directEdges = outgoingEdges.union(incomingEdges);
         const neighbors = directEdges.connectedNodes().not(node);
 
-        // Blast radius: full downstream dependency chain
+        // Full downstream dependency chain
         const successors = node.successors();
         const activeChain = node.union(successors);
         const activeEdges = activeChain.connectedEdges().filter((e: any) => {
@@ -559,7 +429,7 @@ export default function GraphCanvas({
       cy.destroy();
       cyRef.current = null;
     };
-  }, [graphData, cycleNodesSet, cycleEdgesSet, envUsageEdgesSet, orphanSet, entryPointMap, incomingMap, outgoingMap, symbolUsageByEdgeMap]);
+  }, [graphData, cycleNodesSet, cycleEdgesSet, incomingMap, outgoingMap, symbolUsageByEdgeMap]);
 
   return (
     <div className="graph-canvas-container">

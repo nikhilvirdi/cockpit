@@ -12,15 +12,11 @@ import type {
   SelectedNodeInfo,
   SelectedEdgeInfo,
   InputMode,
-  EnvUsageItem,
   SymbolUsageItem,
-  DeclaredEnvKey,
 } from './types';
 
-import Header from './components/Header';
 import Sidebar from './components/Sidebar';
 import GraphCanvas from './components/GraphCanvas';
-import GraphCanvasReagraph from './components/GraphCanvasReagraph';
 import FileInspector from './components/FileInspector';
 
 import './App.css';
@@ -30,7 +26,7 @@ export default function App() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [inputMode, setInputMode] = useState<InputMode>('github');
-  const [graphData, setGraphData] = useState<GraphData>(sampleGraphData as GraphData);
+  const [graphData, setGraphData] = useState<GraphData>(sampleGraphData);
   const [repoUrl, setRepoUrl] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
   const [loadingStatus, setLoadingStatus] = useState<string>('Cloning & Analyzing...');
@@ -42,57 +38,28 @@ export default function App() {
 
   // Filter state
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [selectedEnvFilter, setSelectedEnvFilter] = useState<string>('none');
   const [selectedCycleFilter, setSelectedCycleFilter] = useState<string>('all');
-  const [hideOrphans, setHideOrphans] = useState<boolean>(false);
-  const [entryPathFocus, setEntryPathFocus] = useState<boolean>(false);
 
   // UI toggles
-  const [showDynamicModal, setShowDynamicModal] = useState<boolean>(false);
   const [showLegend, setShowLegend] = useState<boolean>(false);
-
-  // Engine toggle: 'cytoscape' | 'reagraph'
-  const [engine, setEngine] = useState<'cytoscape' | 'reagraph'>(() => {
-    const params = new URLSearchParams(window.location.search);
-    return params.get('engine') === 'reagraph' ? 'reagraph' : 'cytoscape';
-  });
 
   // ─── Derived maps ────────────────────────────────────────────────────────
   const {
     cycleNodesSet,
     cycleEdgesSet,
-    envUsageEdgesSet,
-    orphanSet,
-    entryPointMap,
     incomingMap,
     outgoingMap,
     symbolUsageByEdgeMap,
-    nodeEnvUsageMap,
-    unusedDeclaredKeys,
-    allEnvKeys,
   } = useMemo(() => {
-    const cycleNodes = new Set<string>(graphData.analysis?.cycles?.flat() || []);
+    const cycleNodes = new Set<string>(graphData.analysis.cycles.flat());
     const cycleEdges = new Set<string>();
 
-    for (const cycle of graphData.analysis?.cycles || []) {
+    for (const cycle of graphData.analysis.cycles) {
       for (let i = 0; i < cycle.length; i++) {
         const from = cycle[i];
         const to = cycle[(i + 1) % cycle.length];
         cycleEdges.add(`${from}->${to}`);
       }
-    }
-
-    const envUsageEdges = new Set<string>();
-    for (const item of graphData.envUsage?.usages || []) {
-      if (item.kind === 'transitive' && item.via) {
-        envUsageEdges.add(`${item.file}->${item.via}`);
-      }
-    }
-
-    const orphans = new Set<string>(graphData.analysis?.orphans || []);
-    const entryPoints = new Map<string, string>();
-    for (const ep of graphData.analysis?.entryPoints || []) {
-      entryPoints.set(ep.id, ep.reason);
     }
 
     const incoming = new Map<string, string[]>();
@@ -105,40 +72,18 @@ export default function App() {
     }
 
     const symbolMap = new Map<string, SymbolUsageItem[]>();
-    for (const item of graphData.symbolUsage || []) {
+    for (const item of graphData.symbolUsage) {
       const edgeKey = `${item.usedInFile}->${item.fromFile}`;
       if (!symbolMap.has(edgeKey)) symbolMap.set(edgeKey, []);
       symbolMap.get(edgeKey)!.push(item);
     }
 
-    const nodeEnvMap = new Map<string, EnvUsageItem[]>();
-    const usedEnvKeysSet = new Set<string>();
-    for (const item of graphData.envUsage?.usages || []) {
-      usedEnvKeysSet.add(item.key);
-      if (!nodeEnvMap.has(item.file)) nodeEnvMap.set(item.file, []);
-      nodeEnvMap.get(item.file)!.push(item);
-    }
-
-    const unusedKeys: DeclaredEnvKey[] = [];
-    const allKeysSet = new Set<string>();
-    for (const decl of graphData.envUsage?.declaredKeys || []) {
-      allKeysSet.add(decl.key);
-      if (!usedEnvKeysSet.has(decl.key)) unusedKeys.push(decl);
-    }
-    for (const k of usedEnvKeysSet) allKeysSet.add(k);
-
     return {
       cycleNodesSet: cycleNodes,
       cycleEdgesSet: cycleEdges,
-      envUsageEdgesSet: envUsageEdges,
-      orphanSet: orphans,
-      entryPointMap: entryPoints,
       incomingMap: incoming,
       outgoingMap: outgoing,
       symbolUsageByEdgeMap: symbolMap,
-      nodeEnvUsageMap: nodeEnvMap,
-      unusedDeclaredKeys: unusedKeys,
-      allEnvKeys: Array.from(allKeysSet).sort(),
     };
   }, [graphData]);
 
@@ -163,6 +108,7 @@ export default function App() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `Server error (${res.status})`);
       setGraphData(data as GraphData);
+      setSelectedCycleFilter('all');
     } catch (err: any) {
       setErrorMessage(err.message || 'Failed to analyze repository');
     } finally {
@@ -199,6 +145,7 @@ export default function App() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `Upload analysis failed (${res.status})`);
       setGraphData(data as GraphData);
+      setSelectedCycleFilter('all');
     } catch (err: any) {
       setErrorMessage(err.message || 'Failed to analyze local folder');
     } finally {
@@ -237,29 +184,6 @@ export default function App() {
 
   // ─── Graph Navigation (called by inspector panels) ────────────────────────
   const focusNodeInGraph = (nodeId: string) => {
-    const nodeObj = graphData.nodes?.find((n) => n.id === nodeId);
-    if (nodeObj) {
-      const fanIn = incomingMap.get(nodeId)?.length || 0;
-      const fanOut = outgoingMap.get(nodeId)?.length || 0;
-      const isCycle = cycleNodesSet.has(nodeId);
-      const isOrphan = orphanSet.has(nodeId);
-      const isEntryPoint = entryPointMap.has(nodeId);
-      setSelectedEdge(null);
-      setSelectedNode({
-        id: nodeId,
-        label: nodeId.split('/').pop() || nodeId,
-        fullPath: nodeObj.path || nodeId,
-        fanIn,
-        fanOut,
-        isCycle,
-        isOrphan,
-        isEntryPoint,
-        entryPointReason: entryPointMap.get(nodeId) || '',
-        incoming: incomingMap.get(nodeId) || [],
-        outgoing: outgoingMap.get(nodeId) || [],
-      });
-    }
-
     if (cyRef.current) {
       const node = cyRef.current.getElementById(nodeId);
       if (node && node.length > 0) {
@@ -277,7 +201,7 @@ export default function App() {
           const directEdges = outgoingEdges.union(incomingEdges);
           const neighbors = directEdges.connectedNodes().not(node);
 
-          // Full dependency chain (blast-radius) - downstream dependencies
+          // Full downstream dependency chain
           const successors = node.successors();
           const activeChain = node.union(successors);
           const activeEdges = activeChain.connectedEdges().filter((e: any) => {
@@ -328,12 +252,10 @@ export default function App() {
     (window as any).__cockpit = {
       selectNode: (id: string) => focusNodeInGraph(id),
       selectEdge: (key: string) => selectEdgeByKey(key),
-      setEngine: (eng: 'cytoscape' | 'reagraph') => setEngine(eng),
-      getEngine: () => engine,
       getNodeCount: () => graphData.nodes?.length || 0,
       getCy: () => cyRef.current,
     };
-  }, [graphData, incomingMap, outgoingMap, cycleNodesSet, orphanSet, entryPointMap, engine]);
+  }, [graphData, cycleEdgesSet, symbolUsageByEdgeMap]);
 
   // ─── Filter / Search Effect ───────────────────────────────────────────────
   useEffect(() => {
@@ -342,21 +264,11 @@ export default function App() {
 
     cy.batch(() => {
       cy.elements().removeClass('highlighted-connection highlighted-edge focused neighbor');
-      cy.elements().removeClass('dimmed search-match env-active hidden');
-
-      if (hideOrphans) cy.elements('node.orphan-node').addClass('hidden');
-
-      if (entryPathFocus) {
-        const entryNodes = cy.elements('node.entry-point-node');
-        const outgoingEdges = entryNodes.outgoers('edge');
-        const directDeps = outgoingEdges.targets();
-        const activeEles = entryNodes.union(outgoingEdges).union(directDeps);
-        cy.elements().not(activeEles).addClass('dimmed');
-      }
+      cy.elements().removeClass('dimmed search-match');
 
       if (selectedCycleFilter !== 'all') {
         const idx = parseInt(selectedCycleFilter, 10);
-        const cycle = graphData.analysis?.cycles?.[idx] || [];
+        const cycle = graphData.analysis.cycles[idx] || [];
         const cycleSet = new Set(cycle);
         const cycleNodes = cy.nodes().filter(n => cycleSet.has(n.id()));
         const cycleEdges = cy.edges().filter(e => {
@@ -368,16 +280,6 @@ export default function App() {
           return false;
         });
         cy.elements().not(cycleNodes.union(cycleEdges)).addClass('dimmed');
-      }
-
-      if (selectedEnvFilter !== 'none') {
-        const activeFiles = new Set(
-          (graphData.envUsage?.usages || []).filter(u => u.key === selectedEnvFilter).map(u => u.file)
-        );
-        const activeNodes = cy.nodes().filter(n => activeFiles.has(n.id()));
-        activeNodes.addClass('env-active');
-        cy.nodes().not(activeNodes).addClass('dimmed');
-        cy.edges().addClass('dimmed');
       }
 
       if (searchQuery.trim()) {
@@ -392,15 +294,12 @@ export default function App() {
         cy.edges().addClass('dimmed');
       }
     });
-  }, [searchQuery, selectedEnvFilter, selectedCycleFilter, hideOrphans, entryPathFocus, graphData]);
+  }, [searchQuery, selectedCycleFilter, graphData]);
 
   // ─── Zoom / Fit Controls ─────────────────────────────────────────────────
   const handleFit = () => cyRef.current?.fit(undefined, 40);
   const handleZoomIn = () => cyRef.current && cyRef.current.zoom(cyRef.current.zoom() * 1.25);
   const handleZoomOut = () => cyRef.current && cyRef.current.zoom(cyRef.current.zoom() * 0.8);
-
-  const dynamicAccesses = graphData.envUsage?.dynamicAccesses || [];
-  const totalSymbolsTraced = graphData.symbolUsage?.length || 0;
 
   return (
     <div className="app-container">
@@ -413,21 +312,6 @@ export default function App() {
         multiple
         onChange={handleFallbackInputChange}
         style={{ display: 'none' }}
-      />
-
-      <Header
-        graphData={graphData}
-        totalSymbolsTraced={totalSymbolsTraced}
-        unusedDeclaredKeys={unusedDeclaredKeys}
-        dynamicAccesses={dynamicAccesses}
-        onShowDynamicModal={() => setShowDynamicModal(true)}
-        onSetEnvFilter={setSelectedEnvFilter}
-        engine={engine}
-        onSetEngine={(newEngine) => {
-          setEngine(newEngine);
-          setSelectedNode(null);
-          setSelectedEdge(null);
-        }}
       />
 
       {/* Global Loading / Error Bar */}
@@ -456,17 +340,10 @@ export default function App() {
           onPickLocalFolder={handlePickLocalFolder}
           searchQuery={searchQuery}
           onSetSearchQuery={setSearchQuery}
-          selectedEnvFilter={selectedEnvFilter}
-          onSetEnvFilter={setSelectedEnvFilter}
           selectedCycleFilter={selectedCycleFilter}
           onSetCycleFilter={setSelectedCycleFilter}
-          hideOrphans={hideOrphans}
-          onToggleHideOrphans={() => setHideOrphans(p => !p)}
-          entryPathFocus={entryPathFocus}
-          onToggleEntryPathFocus={() => setEntryPathFocus(p => !p)}
           showLegend={showLegend}
           onToggleLegend={() => setShowLegend(p => !p)}
-          allEnvKeys={allEnvKeys}
           graphData={graphData}
           onFit={handleFit}
           onZoomIn={handleZoomIn}
@@ -474,93 +351,30 @@ export default function App() {
         />
 
         <div style={{ flex: 1, height: '100%', position: 'relative', overflow: 'hidden' }}>
-          {engine === 'reagraph' ? (
-            <GraphCanvasReagraph
-              graphData={graphData}
-              cycleNodesSet={cycleNodesSet}
-              cycleEdgesSet={cycleEdgesSet}
-              envUsageEdgesSet={envUsageEdgesSet}
-              orphanSet={orphanSet}
-              entryPointMap={entryPointMap}
-              incomingMap={incomingMap}
-              outgoingMap={outgoingMap}
-              symbolUsageByEdgeMap={symbolUsageByEdgeMap}
-              selectedNodeId={selectedNode?.id}
-              onSelectNode={(info) => { setSelectedEdge(null); setSelectedNode(info); }}
-              onSelectEdge={(info) => { setSelectedNode(null); setSelectedEdge(info); }}
-              onDeselect={() => { setSelectedNode(null); setSelectedEdge(null); }}
-            />
-          ) : (
-            <GraphCanvas
-              graphData={graphData}
-              cycleNodesSet={cycleNodesSet}
-              cycleEdgesSet={cycleEdgesSet}
-              envUsageEdgesSet={envUsageEdgesSet}
-              orphanSet={orphanSet}
-              entryPointMap={entryPointMap}
-              incomingMap={incomingMap}
-              outgoingMap={outgoingMap}
-              symbolUsageByEdgeMap={symbolUsageByEdgeMap}
-              onSelectNode={(info) => { setSelectedEdge(null); setSelectedNode(info); }}
-              onSelectEdge={(info) => { setSelectedNode(null); setSelectedEdge(info); }}
-              onDeselect={() => { setSelectedNode(null); setSelectedEdge(null); }}
-              cyRef={cyRef}
-            />
-          )}
+          <GraphCanvas
+            graphData={graphData}
+            cycleNodesSet={cycleNodesSet}
+            cycleEdgesSet={cycleEdgesSet}
+            incomingMap={incomingMap}
+            outgoingMap={outgoingMap}
+            symbolUsageByEdgeMap={symbolUsageByEdgeMap}
+            onSelectNode={(info) => { setSelectedEdge(null); setSelectedNode(info); }}
+            onSelectEdge={(info) => { setSelectedNode(null); setSelectedEdge(info); }}
+            onDeselect={() => { setSelectedNode(null); setSelectedEdge(null); }}
+            cyRef={cyRef}
+          />
         </div>
 
         <FileInspector
           selectedNode={selectedNode}
           selectedEdge={selectedEdge}
-          graphData={graphData}
-          nodeEnvUsageMap={nodeEnvUsageMap}
           symbolUsageByEdgeMap={symbolUsageByEdgeMap}
           onCloseNode={() => setSelectedNode(null)}
           onCloseEdge={() => setSelectedEdge(null)}
           onFocusNode={focusNodeInGraph}
           onSelectEdge={selectEdgeByKey}
-          onSetEnvFilter={setSelectedEnvFilter}
         />
       </div>
-
-      {/* Dynamic Access Warnings Modal */}
-      {showDynamicModal && (
-        <div className="modal-overlay" onClick={() => setShowDynamicModal(false)}>
-          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <span style={{ fontWeight: 600, fontSize: '12px', display: 'flex', alignItems: 'center', gap: '8px', color: '#E8A33D' }}>
-                <span>Dynamic Access Warnings ({dynamicAccesses.length})</span>
-              </span>
-              <button type="button" className="panel-close-btn" onClick={() => setShowDynamicModal(false)}>✕</button>
-            </div>
-            <div className="modal-body">
-              <div style={{ fontSize: '11px', color: '#8B96A5', lineHeight: '1.5' }}>
-                These files use dynamic bracket syntax (e.g. <code>process.env[varName]</code>) that cannot be resolved statically:
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                {dynamicAccesses.map((item, idx) => (
-                  <div
-                    key={idx}
-                    className="inspector-card clickable"
-                    onClick={() => { setShowDynamicModal(false); focusNodeInGraph(item.file); }}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: '#4A9EFF' }}>
-                        {item.file}
-                      </span>
-                      <span className="metric-pill warning">Focus Node</span>
-                    </div>
-                    <div style={{ fontSize: '10px', color: '#57606A', fontFamily: 'var(--font-mono)' }}>
-                      {item.note}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
