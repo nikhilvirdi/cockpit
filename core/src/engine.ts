@@ -4,6 +4,7 @@ import { DependencyGraph, GraphEdge, GraphNode, GraphEngineOptions } from './typ
 import { walkDirectory, toPosixPath, SUPPORTED_EXTENSIONS, isSourceFile } from './scanner';
 import { loadTsConfig, loadTsConfigForFile, TsConfigInfo } from './tsconfig';
 import { resolveImportTarget } from './resolver';
+import { isCommonJsRequire } from './commonJs';
 
 const graphProjects = new WeakMap<DependencyGraph, {
   project: Project;
@@ -99,6 +100,7 @@ export function buildDependencyGraph(targetPath: string, options?: GraphEngineOp
   // Extract imports and requires, resolve targets to build edges
   const edges: GraphEdge[] = [];
   const edgeKeySet = new Set<string>();
+  const checker = project.getTypeChecker().compilerObject;
 
   for (const sourceFile of project.getSourceFiles()) {
     const fromFilePath = path.resolve(sourceFile.getFilePath());
@@ -148,7 +150,7 @@ export function buildDependencyGraph(targetPath: string, options?: GraphEngineOp
       }
 
       // CommonJS require('...')
-      if (expr.getText() === 'require') {
+      if (isCommonJsRequire(expr.compilerNode, checker)) {
         const args = callExpr.getArguments();
         if (args.length > 0) {
           const firstArg = args[0];

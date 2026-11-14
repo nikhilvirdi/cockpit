@@ -1,4 +1,5 @@
 import * as path from 'path';
+import { isCommonJsRequire } from './commonJs';
 import { Project, ts } from 'ts-morph';
 import type { CallEvidence, CallableNode, FunctionCallEdge, FunctionGraph, GraphNode, SourceRange } from './types';
 import { toPosixPath } from './scanner';
@@ -313,9 +314,7 @@ export function buildFunctionGraph(
   }
 
   function isRequire(expression: ts.Expression): expression is ts.CallExpression {
-    if (!ts.isCallExpression(expression) || !ts.isIdentifier(expression.expression) || expression.expression.text !== 'require') return false;
-    const declarations = checker.getSymbolAtLocation(expression.expression)?.declarations;
-    return !declarations?.some(declaration => files.has(declaration.getSourceFile()));
+    return ts.isCallExpression(expression) && isCommonJsRequire(expression.expression, checker);
   }
 
   function receiverOrigin(expression: ts.Expression): ts.Expression | undefined {

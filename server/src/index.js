@@ -7,7 +7,7 @@ const path = require('path');
 const multer = require('multer');
 const AdmZip = require('adm-zip');
 const { analyzeWorkspace } = require('@cockpit/core');
-const { indexProvider } = require('./indexer');
+const { nativeProvider } = require('./native-runner');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -86,13 +86,13 @@ async function analyzeDirectoryAndRespond(targetDir, res, sourceLabel = 'workspa
   const controller = new AbortController();
   const cancel = () => controller.abort();
   res.once('close', cancel);
-  let indexDir;
+  let analysisDir;
   try {
     console.log(`Analyzing repository graph in ${targetDir} (${sourceLabel})...`);
     let graph;
     try {
-      indexDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cockpit-scip-'));
-      graph = await analyzeWorkspace(targetDir, { provideIndex: indexProvider(indexDir), signal: controller.signal });
+      analysisDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cockpit-native-'));
+      graph = await analyzeWorkspace(targetDir, { analyzeNative: nativeProvider(analysisDir), signal: controller.signal });
     } catch (analysisErr) {
       if (controller.signal.aborted) return;
       console.error(`Analysis error (${sourceLabel}):`, analysisErr);
@@ -105,7 +105,7 @@ async function analyzeDirectoryAndRespond(targetDir, res, sourceLabel = 'workspa
     if (!controller.signal.aborted) return res.status(200).json(graph);
   } finally {
     res.off('close', cancel);
-    for (const directory of [targetDir, indexDir]) {
+    for (const directory of [targetDir, analysisDir]) {
       if (!directory) continue;
       try {
         fs.rmSync(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });

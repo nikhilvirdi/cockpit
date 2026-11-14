@@ -5,7 +5,7 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "test": "node --test test/api.test.js test/indexer.test.js"
+    "test": "node --test test/api.test.js test/native-runner.test.js"
   },
   "dependencies": {
     "@cockpit/core": "*",

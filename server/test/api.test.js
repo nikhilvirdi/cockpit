@@ -1,8 +1,19 @@
 const assert = require('assert');
 const http = require('http');
 const path = require('node:path');
+const fs = require('node:fs/promises');
 const AdmZip = require('adm-zip');
+const git = require('simple-git');
+const originalGit = git.simpleGit;
+const fixture = path.resolve(__dirname, '../../core/test/fixtures/multilang');
+const fixtureUrl = 'https://github.com/cockpit-test/native-fixture.git';
+// Exercise the GitHub route with a repeatable checkout containing an mixed-language source.
+require.cache[require.resolve('simple-git')].exports = { ...git, simpleGit: (...args) => ({
+  clone: (url, target, options) => url === fixtureUrl ? fs.cp(fixture, target, { recursive: true })
+    : originalGit(...args).clone(url, target, options)
+}) };
 const app = require('../src/index');
+require.cache[require.resolve('simple-git')].exports = git;
 
 async function runTests() {
   const server = http.createServer(app);
@@ -118,22 +129,97 @@ async function runTests() {
     assert.ok(invocation.sites.every(site => site.at.file === 'src/index.ts' && site.target.file === 'src/util.ts'));
     console.log('✓ Valid zip upload returned the file cycle, symbol references, and both call sites');
 
+    const shadowed = new AdmZip();
+    shadowed.addFile('target.js', Buffer.from('exports.value = 1;'));
+    shadowed.addFile('legitimate.cjs', Buffer.from("module.exports = require('./target.js');"));
+    shadowed.addFile('local.js', Buffer.from("function require(x) { return x; }\nexports.call = () => require('./target.js');"));
+    shadowed.addFile('local.ts', Buffer.from("export function run(require: (x: string) => string) { return require('./target.js'); }"));
+    shadowed.addFile('esm.ts', Buffer.from("import './target.js';"));
+    const shadowForm = new FormData();
+    shadowForm.append('bundle', new Blob([shadowed.toBuffer()]), 'shadowed.zip');
+    const shadowResponse = await fetch(`${baseUrl}/api/analyze-upload`, { method: 'POST', body: shadowForm });
+    assert.strictEqual(shadowResponse.status, 200);
+    const shadowGraph = await shadowResponse.json();
+    assert.deepStrictEqual(shadowGraph.edges, [
+      { from: 'esm.ts', to: 'target.js' }, { from: 'legitimate.cjs', to: 'target.js' }
+    ]);
+    const shadowedFunction = shadowGraph.functionGraph.nodes.find(node => node.name === 'require' && node.file === 'local.js');
+    assert.ok(shadowedFunction && shadowGraph.functionGraph.edges.some(edge => edge.callee === shadowedFunction.id));
+
     const mixedZip = new AdmZip();
-    mixedZip.addLocalFolder(path.resolve(__dirname, '../../core/test/fixtures/multilang'));
-    mixedZip.addFile('unindexed/test.py', Buffer.from('def missing(): pass'));
-    mixedZip.addFile('unindexed/pyproject.toml', Buffer.from(''));
+    mixedZip.addLocalFolder(fixture);
     const mixedForm = new FormData();
     mixedForm.append('bundle', new Blob([mixedZip.toBuffer()], { type: 'application/zip' }), 'mixed.zip');
     const mixedResponse = await fetch(`${baseUrl}/api/analyze-upload`, { method: 'POST', body: mixedForm });
     assert.strictEqual(mixedResponse.status, 200);
     const mixed = await mixedResponse.json();
-    assert.strictEqual(mixed.languageCoverage.length, 8);
+    assert.strictEqual(mixed.languageCoverage.length, 7);
     assert.ok(mixed.languageCoverage.some(item => item.language === 'python' && item.status === 'unavailable'));
-    assert.ok(mixed.languageCoverage.some(item => item.language === 'python' && item.status === 'partial'));
-    const goPackage = mixed.nodes.find(node => node.kind === 'package');
-    assert.ok(mixed.edges.some(edge => edge.from === 'go/main.go' && edge.to === goPackage?.id));
-    assert.ok(mixed.functionGraph.edges.some(edge => edge.sites.length === 2 && edge.sites[0].at.file === 'python/pkg/main.py'));
+    function assertUnavailable(graph) {
+      assert.ok(graph.languageCoverage.some(item => item.language === 'python'
+        && item.status === 'unavailable' && item.diagnostics.some(message => message.includes('native analyzer image'))));
+      assert.ok(!graph.nodes.some(node => node.kind === 'package'));
+      assert.deepStrictEqual(graph.edges, [{ from: 'main.ts', to: 'helper.ts' }]);
+      assert.ok(graph.functionGraph.nodes.length > 0);
+      assert.ok(graph.functionGraph.nodes.every(node => ['typescript', 'javascript'].includes(node.language)));
+    }
+    assertUnavailable(mixed);
     assert.ok(mixed.nodes.filter(node => !node.kind).every(node => node.id === node.path && !path.isAbsolute(node.path)));
+    const checkout = await fetch(`${baseUrl}/api/analyze`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ repoUrl: fixtureUrl })
+    });
+    assert.strictEqual(checkout.status, 200);
+    assertUnavailable(await checkout.json());
+    if (process.env.COCKPIT_TEST_ANALYZER_IMAGE) {
+      const previous = process.env.COCKPIT_ANALYZER_IMAGE;
+      process.env.COCKPIT_ANALYZER_IMAGE = process.env.COCKPIT_TEST_ANALYZER_IMAGE;
+      try {
+        const form = new FormData();
+        form.append('bundle', new Blob([mixedZip.toBuffer()]), 'controlled.zip');
+        const results = await Promise.all([
+          fetch(`${baseUrl}/api/analyze-upload`, { method: 'POST', body: form }),
+          fetch(`${baseUrl}/api/analyze`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ repoUrl: fixtureUrl })
+          })
+        ]);
+        for (const result of results) {
+          assert.strictEqual(result.status, 200);
+          const graph = await result.json();
+          for (const lang of ['c', 'cpp', 'go', 'java', 'python']) {
+            assert.ok(graph.languageCoverage.some(item => item.language === lang && item.status === 'partial'),
+              JSON.stringify(graph.languageCoverage));
+          }
+          assert.ok(graph.edges.some(edge => edge.from === 'go/main.go' && edge.kind === 'import'));
+          const java = graph.edges.find(edge => edge.from === 'java/src/app/Runner.java' && edge.kind === 'import');
+          assert.ok(java?.additionalEvidence?.reference?.length);
+          assert.ok(graph.edges.some(edge => edge.from === 'python/pkg/main.py' && edge.kind === 'import'));
+          assert.ok(graph.edges.some(edge => edge.from === 'native/run.c' && edge.kind === 'include'));
+          const byId = new Map(graph.functionGraph.nodes.map(node => [node.id, node]));
+          const calls = (name, file) => graph.functionGraph.edges.filter(edge =>
+            byId.get(edge.callee)?.name === name && edge.sites[0].at.file === file);
+          assert.equal(calls('Leaf', 'go/main.go')[0].sites.length, 2);
+          assert.deepEqual(calls('leaf', 'python/pkg/main.py').find(edge => edge.sites.length === 2)
+            .sites.map(site => site.at.startColumn), [20, 31]);
+          const overloads = calls('leaf', 'java/src/app/Runner.java');
+          assert.equal(new Set(overloads.map(edge => edge.callee)).size, 2);
+          assert.ok(overloads.every(edge => edge.sites[0].signature));
+          assert.equal(calls('leaf', 'native/run.c')[0].sites.length, 2);
+          assert.ok(calls('Constructed', 'native/main.cpp').some(edge => edge.kind === 'construct'));
+          assert.ok(calls('qualified', 'native/main.cpp').length);
+          assert.ok(calls('fn', 'native/main.cpp').some(edge => edge.sites[0].signature));
+          assert.ok(calls('static', 'python/pkg/main.py').some(edge => byId.get(edge.caller)?.name === 'member'));
+          assert.ok(!graph.functionGraph.edges.some(edge =>
+            ['Dynamic', 'dispatch', 'indirect', 'dynamic'].includes(byId.get(edge.caller)?.name)));
+          assert.ok(graph.functionGraph.unresolved.some(call => call.at.file === 'go/main.go'));
+          assert.ok(graph.functionGraph.unresolved.some(call => call.at.file === 'java/src/app/Runner.java'));
+          assert.ok(graph.functionGraph.unresolved.some(call => call.at.file === 'native/leaf.c'));
+          assert.ok(graph.functionGraph.unresolved.some(call => call.at.file === 'python/pkg/main.py'));
+        }
+      } finally {
+        if (previous === undefined) delete process.env.COCKPIT_ANALYZER_IMAGE;
+        else process.env.COCKPIT_ANALYZER_IMAGE = previous;
+      }
+    }
 
     // 9. Upload endpoint: reject zip exceeding file count cap (413)
     const tooManyFilesZip = new AdmZip();

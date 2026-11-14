@@ -3,7 +3,8 @@ import type { Language } from './types';
 const languages: Record<string, Language> = {
   js: 'javascript', jsx: 'javascript', mjs: 'javascript', cjs: 'javascript',
   ts: 'typescript', tsx: 'typescript', mts: 'typescript', cts: 'typescript',
-  py: 'python', go: 'go', java: 'java', c: 'c', h: 'c',
+  py: 'python', go: 'go', java: 'java', c: 'c',
+  h: 'c', // Discovery group only. Clang determines the header's actual language.
   cc: 'cpp', cpp: 'cpp', cxx: 'cpp', hpp: 'cpp', hh: 'cpp', hxx: 'cpp'
 };
 
@@ -24,8 +25,7 @@ const metadata = new Set([
   'package.json', 'pyproject.toml', 'pyrightconfig.json', 'setup.cfg', 'requirements.txt', 'setup.py',
   'go.mod', 'go.sum', 'go.work', 'go.work.sum', 'pom.xml',
   'build.gradle', 'build.gradle.kts', 'settings.gradle', 'settings.gradle.kts', 'gradle.properties',
-  'cmakelists.txt', 'compile_commands.json', 'index.scip',
-  'scip-python.scip', 'scip-go.scip', 'scip-java.scip', 'scip-clang.scip'
+  'cmakelists.txt', 'compile_commands.json'
 ]);
 
 export function isAnalysisInput(name: string): boolean {

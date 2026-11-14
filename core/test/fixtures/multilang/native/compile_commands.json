@@ -4,24 +4,24 @@
       "gcc",
       "-std=c11",
       "-c",
-      "/src/leaf.c"
+      "leaf.c"
     ],
-    "directory": "/src",
-    "file": "/src/leaf.c"
+    "directory": ".",
+    "file": "leaf.c"
   },
   {
-    "arguments": ["gcc", "-std=c11", "-c", "/src/run.c"],
-    "directory": "/src",
-    "file": "/src/run.c"
+    "arguments": ["gcc", "-std=c11", "-D", "COCKPIT_FIXTURE", "-fplugin=/workspace/untrusted.so", "-c", "run.c"],
+    "directory": ".",
+    "file": "run.c"
   },
   {
     "arguments": [
       "g++",
       "-std=c++17",
       "-c",
-      "/src/main.cpp"
+      "main.cpp"
     ],
-    "directory": "/src",
-    "file": "/src/main.cpp"
+    "directory": ".",
+    "file": "main.cpp"
   }
 ]

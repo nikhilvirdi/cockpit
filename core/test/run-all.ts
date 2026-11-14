@@ -2,9 +2,9 @@ import './engine.test';
 import './analysis.test';
 import './symbolUsage.test';
 import './functionGraph.test';
-import { testScip } from './scip.test';
+import { testNative } from './native.test';
 
-void testScip().catch(error => {
+void testNative().catch(error => {
   console.error(error);
   process.exitCode = 1;
 });

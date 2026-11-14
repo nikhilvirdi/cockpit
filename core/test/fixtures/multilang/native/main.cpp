@@ -21,4 +21,8 @@ struct Constructed {
     explicit Constructed(int n) { leaf(n); }
 };
 Constructed* construct() { return new Constructed(2); }
+int direct() { Constructed value(2); int scalar(0); return scalar; }
+int qualified();
 }
+int fixture::qualified() { return fn(2); }
+int callQualified() { return fixture::qualified(); }

@@ -9,11 +9,15 @@ export interface GraphNode {
   language?: Language;
 }
 
+export type DependencyKind = 'import' | 'include' | 'reference';
+
 export interface GraphEdge {
   from: string;
   to: string;
-  kind?: 'import' | 'include' | 'reference';
+  kind?: DependencyKind;
   evidence?: SourceRange[];
+  /** Additional evidence categories for the same directed dependency. */
+  additionalEvidence?: Partial<Record<DependencyKind, SourceRange[]>>;
 }
 
 export interface DependencyGraph {

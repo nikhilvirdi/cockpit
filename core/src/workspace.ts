@@ -1,83 +1,13 @@
-import * as fs from 'fs';
 import * as path from 'path';
 import { analyzeDependencyGraph, detectCycles } from './analysis';
 import { buildDependencyGraph } from './engine';
 import { toPosixPath, walkDirectory } from './scanner';
-import { isAnalysisInput, languageOf } from './sourceKinds';
-import { analyzeScip, indexerNames, readIndex, unavailable } from './scip';
-import type { IndexedProject, IndexProvider, LanguageResult } from './scip';
-import type { AnalyzedGraph, FunctionGraph, GraphEdge, GraphNode, IndexedLanguage, LanguageCoverage } from './types';
+import { languageOf } from './sourceKinds';
+import { emptyNative, normalizeNative } from './native';
+import type { NativeGraph, NativeLanguage, NativeProvider } from './native';
+import type { AnalyzedGraph, FunctionGraph, GraphEdge, GraphNode, LanguageCoverage } from './types';
 
-const markers: Record<IndexedLanguage, string[]> = {
-  python: ['pyproject.toml', 'pyrightconfig.json', 'setup.cfg', 'requirements.txt', 'setup.py'],
-  go: ['go.mod', 'go.work'],
-  java: ['pom.xml', 'settings.gradle', 'settings.gradle.kts', 'build.gradle', 'build.gradle.kts'],
-  c: ['compile_commands.json', 'cmakelists.txt'],
-  cpp: ['compile_commands.json', 'cmakelists.txt']
-};
-
-function discover(root: string) {
-  const paths = walkDirectory(root, isAnalysisInput).sort();
-  const metadata = new Map<string, Map<string, string>>();
-  const groups = new Map<string, IndexedProject>();
-  for (const file of paths) {
-    const directory = path.dirname(file);
-    const name = path.basename(file).toLowerCase();
-    let entries = metadata.get(directory);
-    if (!entries) metadata.set(directory, entries = new Map());
-    entries.set(name, file);
-  }
-  for (const file of paths) {
-    const language = languageOf(file);
-    if (!language || language === 'javascript' || language === 'typescript') continue;
-    let candidate = path.dirname(file);
-    let projectRoot = root;
-    for (;;) {
-      const entries = metadata.get(candidate);
-      if (entries?.has('index.scip') || entries?.has(indexerNames[language] + '.scip')
-        || markers[language].some(name => entries?.has(name))) {
-        projectRoot = candidate;
-        break;
-      }
-      if (candidate === root) break;
-      candidate = path.dirname(candidate);
-    }
-    const key = JSON.stringify([indexerNames[language], projectRoot]);
-    let group = groups.get(key);
-    if (!group) groups.set(key, group = { root: projectRoot, language, files: [] });
-    group.files.push({ id: toPosixPath(path.relative(root, file)), path: file, language });
-  }
-  return { groups: [...groups.values()], metadata };
-}
-
-function missingIndex(project: IndexedProject, metadata: Map<string, string> | undefined): string {
-  const name = indexerNames[project.language];
-  if (project.language === 'go' && !markers.go.some(name => metadata?.has(name))) {
-    return 'Go module metadata is missing. Supply a project index or configure a Go module or workspace.';
-  }
-  if ((project.language === 'c' || project.language === 'cpp') && !metadata?.has('compile_commands.json')) {
-    return 'No compilation database or SCIP index is available. Generate an index with a valid compile_commands.json in an isolated toolchain.';
-  }
-  if (project.language === 'java' && !markers.java.some(name => metadata?.has(name))) {
-    return 'No Java build metadata or SCIP index is available. Supply a scip-java index with the correct classpath.';
-  }
-  return 'No ' + name + ' index is available. Supply index.scip or configure an isolated indexer for this language.';
-}
-
-function invalidCompilationDatabase(file: string): boolean {
-  try {
-    if (fs.statSync(file).size > 1024 * 1024) return true;
-    const entries = JSON.parse(fs.readFileSync(file, 'utf8')) as unknown;
-    return !Array.isArray(entries) || !entries.length || entries.some(entry =>
-      !entry || typeof entry.file !== 'string' || !entry.file || typeof entry.directory !== 'string'
-      || !entry.directory || !(typeof entry.command === 'string' && entry.command
-        || Array.isArray(entry.arguments) && entry.arguments.length && entry.arguments.every((arg: unknown) => typeof arg === 'string')));
-  } catch {
-    return true;
-  }
-}
-
-function merge(base: AnalyzedGraph, results: LanguageResult[], failedJs: LanguageCoverage[], signal?: AbortSignal): AnalyzedGraph {
+function merge(base: AnalyzedGraph, results: NativeGraph[], failedJs: LanguageCoverage[], signal?: AbortSignal): AnalyzedGraph {
   if (!results.length && !failedJs.length) return base;
   signal?.throwIfAborted();
   const nodeById = new Map<string, GraphNode>(base.nodes.map(node => [node.id, node]));
@@ -100,12 +30,8 @@ function merge(base: AnalyzedGraph, results: LanguageResult[], failedJs: Languag
     }
     for (const edge of result.edges) {
       const key = JSON.stringify([edge.from, edge.to]);
-      const previous = edgeByPair.get(key);
-      if (!previous) edgeByPair.set(key, edge);
-      else {
-        edgeByPair.set(key, { ...previous, evidence: [...new Map([...(previous.evidence ?? []), ...(edge.evidence ?? [])]
-          .map(site => [JSON.stringify(site), site])).values()] });
-      }
+      // Each adapter owns its consumer files and has already aggregated their evidence.
+      edgeByPair.set(key, edge);
     }
     for (const node of result.functions.nodes) functions.nodes.push(node);
     for (const edge of result.functions.edges) functions.edges.push(edge);
@@ -123,64 +49,64 @@ function merge(base: AnalyzedGraph, results: LanguageResult[], failedJs: Languag
     functionGraph: functions, languageCoverage: coverage.sort((a, b) =>
       a.language.localeCompare(b.language) || a.root.localeCompare(b.root)) };
 }
-
-/** Preserves the existing JS/TS API while sharing one workspace result with the other adapters. */
-export async function analyzeWorkspace(root: string, options: { provideIndex?: IndexProvider; signal?: AbortSignal } = {}): Promise<AnalyzedGraph> {
+export async function analyzeWorkspace(root: string, options: { analyzeNative?: NativeProvider; signal?: AbortSignal } = {}): Promise<AnalyzedGraph> {
   const workspace = path.resolve(root);
-  const { groups, metadata } = discover(workspace);
   options.signal?.throwIfAborted();
+  const paths = walkDirectory(workspace).sort();
+  const groups = new Map<NativeLanguage, GraphNode[]>();
+  for (const file of paths) {
+    const mode = languageOf(file);
+    if (!mode || mode === 'typescript' || mode === 'javascript') continue;
+    const language = mode === 'cpp' ? 'c' : mode;
+    const id = toPosixPath(path.relative(workspace, file));
+    const group = groups.get(language) ?? [];
+    group.push({ id, path: id, language: /\.h$/i.test(id) ? undefined : mode });
+    groups.set(language, group);
+  }
   let base: AnalyzedGraph;
   const failedJs: LanguageCoverage[] = [];
   try {
     base = analyzeDependencyGraph(buildDependencyGraph(workspace), { rootDir: workspace });
   } catch (error) {
-    if (!groups.length) throw error;
+    if (!groups.size) throw error;
     const nodes: GraphNode[] = [];
-    for (const entries of metadata.values()) {
-      for (const file of entries.values()) {
-        const language = languageOf(file);
-        if (language !== 'javascript' && language !== 'typescript') continue;
-        const id = toPosixPath(path.relative(workspace, file));
-        nodes.push({ id, path: id, language });
-        if (failedJs.some(item => item.language === language)) continue;
-        failedJs.push({ language, root: '.', analyzer: 'ts-morph', status: 'unavailable',
-          diagnostics: ['The TypeScript compiler could not analyze this workspace.'] });
-      }
+    for (const file of paths) {
+      const language = languageOf(file);
+      if (language !== 'javascript' && language !== 'typescript') continue;
+      const id = toPosixPath(path.relative(workspace, file));
+      nodes.push({ id, path: id, language });
+      if (failedJs.some(item => item.language === language)) continue;
+      failedJs.push({ language, root: '.', analyzer: 'ts-morph', status: 'unavailable',
+        diagnostics: ['The TypeScript compiler could not analyze this workspace.'] });
     }
     if (!nodes.length) throw error;
     base = { nodes, edges: [], analysis: { cycles: [] }, symbolUsage: [],
       functionGraph: { nodes: [], edges: [], moduleCalls: [], unresolved: [], diagnostics: [], coverage: 'unavailable' } };
   }
 
-  const results: LanguageResult[] = [];
-  const decoded = new Map<string, ReturnType<typeof readIndex>>();
-  for (const project of groups) {
+
+  const results: NativeGraph[] = [];
+  for (const [language, files] of groups) {
     options.signal?.throwIfAborted();
-    const entries = metadata.get(project.root);
-    let index = entries?.get(indexerNames[project.language] + '.scip') ?? entries?.get('index.scip');
-    const database = entries?.get('compile_commands.json');
-    if (!index && (project.language === 'c' || project.language === 'cpp')) {
-      if (!database || invalidCompilationDatabase(database)) {
-        results.push(unavailable(project, workspace, database
-          ? 'The compilation database is invalid or exceeds the size limit.' : missingIndex(project, entries)));
-        continue;
-      }
+    let output;
+    try {
+      output = await options.analyzeNative?.(workspace, language, options.signal);
+    } catch (error) {
+      if (options.signal?.aborted) throw error;
+      const message = error instanceof Error && !('code' in error) && !error.message.includes(workspace)
+        ? error.message : 'The isolated analyzer could not run.';
+      results.push(emptyNative(files, language, message));
+      continue;
     }
-    if (!index && options.provideIndex) {
-      try {
-        index = await options.provideIndex(project, options.signal);
-      } catch (error) {
-        if (options.signal?.aborted) throw error;
-        const message = error instanceof Error && !('code' in error) && !error.message.includes(project.root)
-          ? error.message : 'The isolated indexer failed.';
-        results.push(unavailable(project, workspace, message));
-        continue;
-      }
+    if (!output) {
+      results.push(emptyNative(files, language, 'Configure the Cockpit native analyzer image to analyze this language.'));
+      continue;
     }
-    results.push(await analyzeScip(project, {
-      workspace, index, decoded, signal: options.signal, missing: missingIndex(project, entries)
-    }));
+    try {
+      results.push(normalizeNative(workspace, language, files, output));
+    } catch {
+      results.push(emptyNative(files, language, 'The isolated analyzer returned an invalid or incompatible result.'));
+    }
   }
   return merge(base, results, failedJs, options.signal);
 }
-
