@@ -11,7 +11,7 @@ const express = createRequire(require.resolve('../../server/package.json'))('exp
 const fixture = fileURLToPath(new URL('../../core/test/fixtures/function-project/', import.meta.url));
 const cycles = fileURLToPath(new URL('../../core/test/fixtures/analysis-project/', import.meta.url));
 const mixed = fileURLToPath(new URL('../../core/test/fixtures/multilang/', import.meta.url));
-const medium = JSON.parse(readFileSync(new URL('../src/sample-graph-200.json', import.meta.url), 'utf8'));
+const medium = JSON.parse(readFileSync(new URL('./large-graph.json', import.meta.url), 'utf8'));
 const defaultRepo = 'https://github.com/jonschlinkert/is-number';
 let server, browser, url;
 
@@ -117,6 +117,129 @@ async function analyze(page, repo = defaultRepo) {
   return response;
 }
 
+test('starts empty, blocks duplicate submissions and clears old results during analysis', async t => {
+  const { page, errors } = await open(t);
+  const frame = page.locator('.canvas-frame');
+  const loading = frame.locator('.analysis-loading');
+  assert.equal(await frame.locator('canvas').count(), 0);
+  assert.equal(await frame.textContent(), '');
+  assert.equal(await page.evaluate(() => window.explorerWorkers.started), 0);
+
+  let releaseGithub;
+  const githubResponse = new Promise(resolve => { releaseGithub = resolve; });
+  let githubRequests = 0;
+  await page.route('**/api/analyze', async route => {
+    githubRequests++;
+    await githubResponse;
+    await route.fulfill({ json: { nodes: [{ id: 'first.ts' }], edges: [] } });
+  });
+  await page.getByLabel('Repository URL').fill(defaultRepo);
+  await page.getByRole('button', { name: 'Analyze repository' }).evaluate(button => {
+    button.form.requestSubmit();
+    button.form.requestSubmit();
+  });
+  await loading.waitFor();
+  assert.equal(await loading.locator('.sr-only').textContent(), 'Cloning and analyzing repository…');
+  assert.equal(await frame.locator('canvas').count(), 0);
+  const animation = await loading.evaluate(element => {
+    const text = element.querySelector('[aria-hidden]');
+    const characters = [...text.children];
+    const center = rect => [rect.x + rect.width / 2, rect.y + rect.height / 2];
+    const actual = center(text.getBoundingClientRect());
+    const expected = center(element.parentElement.getBoundingClientRect());
+    const effects = characters.map(letter => letter.getAnimations()[0]);
+    effects.forEach(effect => { effect.pause(); effect.currentTime = 0; });
+    const colors = () => characters.map(letter => getComputedStyle(letter).color);
+    const muted = colors();
+    effects.forEach(effect => { effect.currentTime = 342; });
+    const highlighted = colors();
+    effects.forEach(effect => { effect.currentTime = 2242; });
+    return {
+      centered: actual.every((point, i) => Math.abs(point - expected[i]) < 1),
+      text: text.textContent,
+      muted: muted.every(color => color === 'rgb(163, 163, 172)'),
+      staggered: highlighted[0] === 'rgb(255, 255, 255)' && highlighted.at(-1) === muted.at(-1),
+      repeat: colors().every((color, i) => color === highlighted[i]),
+    };
+  });
+  assert.deepEqual(animation, {
+    centered: true, text: 'Cloning and analyzing repository…', muted: true, staggered: true, repeat: true,
+  });
+  await page.getByRole('button', { name: 'Local folder' }).click();
+  assert.ok(await page.getByRole('button', { name: 'Select folder' }).isDisabled());
+  releaseGithub();
+  await arranged(page);
+  assert.equal(githubRequests, 1);
+  assert.equal(await loading.count(), 0);
+  await search(page, 'first.ts');
+  await page.getByRole('complementary', { name: 'File inspector' }).waitFor();
+
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  let releaseLocal;
+  const localResponse = new Promise(resolve => { releaseLocal = resolve; });
+  await page.route('**/api/analyze-upload', async route => {
+    await localResponse;
+    await route.fulfill({ status: 422, json: { error: 'This folder could not be analyzed.' } });
+  });
+  const chooser = page.waitForEvent('filechooser');
+  await page.getByRole('button', { name: 'Select folder' }).click();
+  await (await chooser).setFiles(fixture);
+  await loading.waitFor();
+  assert.equal(await loading.locator('.sr-only').textContent(), 'Analyzing local folder…');
+  assert.equal(await loading.evaluate(element => element.getAnimations({ subtree: true }).length), 0);
+  assert.equal(await frame.locator('canvas').count(), 0);
+  assert.equal(await page.getByRole('complementary', { name: 'File inspector' }).count(), 0);
+  assert.equal(await page.getByRole('searchbox').inputValue(), '');
+  releaseLocal();
+  await page.getByRole('alert').getByText('This folder could not be analyzed.').waitFor();
+  assert.equal(await loading.count(), 0);
+  assert.equal(await frame.locator('canvas').count(), 0);
+
+  await page.unroute('**/api/analyze');
+  await page.route('**/api/analyze', route => route.fulfill({ json: { nodes: [{ id: 'next.ts' }], edges: [] } }));
+  assert.equal((await analyze(page)).status(), 200);
+  await arranged(page);
+  assert.deepEqual((await canvasState(page)).nodes.map(node => node.id), ['next.ts']);
+  assert.equal(await page.getByRole('alert').count(), 0);
+  assert.deepEqual(errors, []);
+});
+
+test('canceling the directory picker keeps the result until a folder is selected', async t => {
+  const { page, errors } = await open(t);
+  await page.route('**/api/analyze', route => route.fulfill({ json: { nodes: [{ id: 'previous.ts' }], edges: [] } }));
+  assert.equal((await analyze(page)).status(), 200);
+  await arranged(page);
+  await page.evaluate(() => {
+    Object.defineProperty(window, 'showDirectoryPicker', { value: async () => { throw new DOMException('', 'AbortError'); } });
+  });
+  await page.getByRole('button', { name: 'Local folder' }).click();
+  const selectFolder = page.getByRole('button', { name: 'Select folder' });
+  await selectFolder.click();
+  assert.deepEqual((await canvasState(page)).nodes.map(node => node.id), ['previous.ts']);
+  assert.equal(await page.locator('.analysis-loading').count(), 0);
+
+  await page.evaluate(() => {
+    Object.defineProperty(window, 'showDirectoryPicker', { value: async () => ({
+      name: 'project',
+      async *values() {
+        await new Promise(resolve => { window.finishFolderScan = resolve; });
+        yield { kind: 'file', name: 'selected.ts', getFile: async () => new File(['export {}'], 'selected.ts') };
+      },
+    }) });
+  });
+  await page.route('**/api/analyze-upload', route => route.fulfill({ json: { nodes: [{ id: 'selected.ts' }], edges: [] } }));
+  await selectFolder.click();
+  const loading = page.locator('.analysis-loading');
+  await loading.waitFor();
+  assert.equal(await loading.locator('.sr-only').textContent(), 'Analyzing local folder…');
+  assert.equal(await page.locator('.canvas-frame canvas').count(), 0);
+  await page.evaluate(() => window.finishFolderScan());
+  await arranged(page);
+  assert.deepEqual((await canvasState(page)).nodes.map(node => node.id), ['selected.ts']);
+  assert.equal(await loading.count(), 0);
+  assert.deepEqual(errors, []);
+});
+
 test('compiler-backed upload, call evidence, focus, expansion and file navigation', async t => {
   const { page, errors } = await open(t);
   const data = await chooseFolder(page, fixture);
@@ -180,12 +303,12 @@ test('compiler-backed upload, call evidence, focus, expansion and file navigatio
   assert.deepEqual(errors, []);
 });
 
-test('sample, cycle filter, medium cap and canceled layouts', async t => {
+test('cycle filter, medium cap and canceled layouts', async t => {
   const { page, errors } = await open(t);
+  await chooseFolder(page, cycles);
   await arranged(page);
   const canvases = await page.locator('.graph-surface canvas').count();
   assert.ok(canvases > 0);
-  await chooseFolder(page, cycles);
   await page.getByLabel('Circular dependencies').selectOption('0');
   await arranged(page);
   assert.ok((await canvasState(page)).edges.every(edge => edge.classes.includes('cycle')));
@@ -278,7 +401,6 @@ test('a Java file edge displays import and reference evidence together', async t
 
 test('handles incomplete and empty responses at a narrow viewport', async t => {
   const { page, errors } = await open(t, { viewport: { width: 420, height: 780 } });
-  await arranged(page);
   await page.route('**/api/analyze', route => route.fulfill({ json: { nodes: [], edges: [] } }));
   await analyze(page);
   await page.getByText('No supported source files were found.', { exact: true }).waitFor();
@@ -294,8 +416,9 @@ test('handles incomplete and empty responses at a narrow viewport', async t => {
 
 test('layout failure falls back to a usable grid', async t => {
   const { page, errors } = await open(t, { workerFailure: true });
+  await chooseFolder(page, cycles);
   await page.getByText('Layered layout unavailable. Showing a grid.').waitFor();
-  await search(page, 'src/analysis.ts');
+  await search(page, 'node1.ts');
   await page.getByRole('complementary', { name: 'File inspector' }).waitFor();
   assert.equal(errors.filter(error => error.includes('Cockpit graph layout failed')).length, 1);
 });

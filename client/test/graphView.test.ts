@@ -8,7 +8,7 @@ const selected = ['demo/build/compile_commands.json', 'demo/build/generated.cpp'
   .map(webkitRelativePath => ({ webkitRelativePath, name: webkitRelativePath.split('/').at(-1) })) as unknown as FileList;
 assert.deepEqual(filterFileList(selected).map(file => file.relativePath), ['build/compile_commands.json', 'src/main.cpp']);
 
-const fixture = JSON.parse(readFileSync(new URL('../src/sample-graph-200.json', import.meta.url), 'utf8'));
+const fixture = JSON.parse(readFileSync(new URL('./large-graph.json', import.meta.url), 'utf8'));
 const large = indexGraphs(readGraph(fixture)).files;
 const overview = projectGraph(large, undefined, 1);
 assert.equal(overview.nodes.length, NODE_LIMIT);

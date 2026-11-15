@@ -1,18 +1,21 @@
 import { lazy, Suspense, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
 import type { Core } from 'cytoscape';
-import sampleGraph from './sample-graph.json';
 import { filterFileList, walkDirectoryHandle } from './folderScanner';
 import type { FolderHandle, ScannedFile } from './folderScanner';
 import type { GraphData, InputMode, Selection, View } from './types';
-import { analyze, readGraph } from './graphData';
+import { analyze } from './graphData';
 import { EDGE_LIMIT, edgeKey, indexGraphs, languageName, location, NODE_LIMIT, projectGraph } from './graphView';
 import Sidebar from './components/Sidebar';
 import FileInspector from './components/FileInspector';
 import './App.css';
 
 const GraphCanvas = lazy(() => import('./components/GraphCanvas'));
-const sample = readGraph(sampleGraph);
+const emptyGraph: GraphData = { nodes: [], edges: [], analysis: { cycles: [] }, symbolUsage: [] };
+const analysisMessage = {
+  github: 'Cloning and analyzing repository…',
+  folder: 'Analyzing local folder…',
+};
 const resultLimit = 40;
 const uploadLimit = 50 * 1024 * 1024;
 
@@ -28,8 +31,10 @@ export default function App() {
   const cyRef = useRef<Core | null>(null);
   const input = useRef<HTMLInputElement>(null);
   const [inputMode, setInputMode] = useState<InputMode>('github');
-  const [source, setSource] = useState({ graph: sample, name: 'Sample graph', revision: 0 });
-  const [loading, setLoading] = useState('');
+  const busy = useRef(false);
+  const [graph, setGraph] = useState<GraphData | null>(null);
+  const [loading, setLoading] = useState<InputMode>();
+  const [choosingFolder, setChoosingFolder] = useState(false);
   const [error, setError] = useState('');
   const [view, setView] = useState<View>('files');
   const [query, setQuery] = useState('');
@@ -38,16 +43,15 @@ export default function App() {
   const [functionState, setFunctionState] = useState<Exploration>(overview);
   const [functionFile, setFunctionFile] = useState<string>();
 
-  const { graph } = source;
-  const indexed = useMemo(() => indexGraphs(graph), [graph]);
+  const indexed = useMemo(() => indexGraphs(graph ?? emptyGraph), [graph]);
   const index = indexed[view];
   const state = view === 'files' ? fileState : functionState;
   const setState = view === 'files' ? setFileState : setFunctionState;
-  const functionGraph = graph.functionGraph;
+  const functionGraph = graph?.functionGraph;
   const selectedFile = fileState.selection?.kind === 'node' ? fileState.selection.id : undefined;
   const selectedNode = state.selection?.kind === 'node' ? index.byId.get(state.selection.id) : undefined;
   const selectedEdge = state.selection?.kind === 'edge' ? index.byEdge.get(state.selection.id) : undefined;
-  const currentCycle = cycle ? graph.analysis.cycles[Number(cycle)] : undefined;
+  const currentCycle = cycle ? graph?.analysis.cycles[Number(cycle)] : undefined;
   const cycleEdges = useMemo(() => currentCycle && new Set(currentCycle.map((id, i) =>
     edgeKey(id, currentCycle[(i + 1) % currentCycle.length]))), [currentCycle]);
   const scopedFunctions = functionFile ? indexed.functionsByFile.get(functionFile) : undefined;
@@ -94,6 +98,7 @@ export default function App() {
   }
 
   function toggleView(next: View) {
+    if (!graph) return;
     if (next === 'functions' && view === 'files' && selectedFile && selectedFile !== functionFile) {
       exploreFunctions(selectedFile);
     } else switchView(next);
@@ -141,84 +146,79 @@ export default function App() {
     setView('files');
   }
 
-  function receive(data: GraphData, name: string) {
-    setSource(previous => ({ graph: data, name, revision: previous.revision + 1 }));
+  async function runAnalysis(mode: InputMode, request: () => Promise<Response>) {
+    // Lock before any await so picker callbacks and form submits cannot overlap.
+    if (busy.current) return;
+    busy.current = true;
+    setGraph(null);
+    setLoading(mode);
+    setError('');
     setView('files');
     setFileState(overview);
     setFunctionState(overview);
     setFunctionFile(undefined);
     setQuery('');
     setCycle('');
+    try {
+      setGraph(await analyze(request()));
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message
+        : mode === 'github' ? 'The repository could not be analyzed.' : 'The folder could not be analyzed.');
+    } finally {
+      busy.current = false;
+      setLoading(undefined);
+    }
   }
 
-  async function analyzeGithub(url: string) {
-    if (loading) return;
-    setLoading('Cloning and analyzing repository…');
-    setError('');
-    try {
-      const data = await analyze(fetch('/api/analyze', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ repoUrl: url }),
-      }));
-      receive(data, url.replace(/^https:\/\/github\.com\//i, '').replace(/\/$/, ''));
-    } catch (failure) {
-      setError(failure instanceof Error ? failure.message : 'The repository could not be analyzed.');
-    } finally {
-      setLoading('');
-    }
+  function analyzeGithub(url: string) {
+    return runAnalysis('github', () => fetch('/api/analyze', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ repoUrl: url }),
+    }));
   }
 
   async function upload(files: ScannedFile[], name: string) {
-    setError('');
-    try {
-      if (!files.length) throw new Error('No supported source or configuration files were found.');
-      const bytes = files.reduce((total, entry) => total + entry.file.size, 0);
-      if (bytes > uploadLimit) throw new Error('The selected files exceed the 50 MB upload limit.');
-      setLoading('Packaging selected files…');
-      const { createZipBundle } = await import('./zipBundle');
-      const form = new FormData();
-      form.append('bundle', await createZipBundle(files), name + '.zip');
-      setLoading('Analyzing local folder…');
-      receive(await analyze(fetch('/api/analyze-upload', { method: 'POST', body: form })), name);
-    } catch (failure) {
-      setError(failure instanceof Error ? failure.message : 'The folder could not be analyzed.');
-    } finally {
-      setLoading('');
-    }
+    if (!files.length) throw new Error('No supported source or configuration files were found.');
+    const bytes = files.reduce((total, entry) => total + entry.file.size, 0);
+    if (bytes > uploadLimit) throw new Error('The selected files exceed the 50 MB upload limit.');
+    const { createZipBundle } = await import('./zipBundle');
+    const form = new FormData();
+    form.append('bundle', await createZipBundle(files), name + '.zip');
+    return fetch('/api/analyze-upload', { method: 'POST', body: form });
   }
 
   async function pickFolder() {
-    if (loading) return;
+    if (busy.current) return;
     const picker = (window as Window & {
       showDirectoryPicker?: (options: { mode: 'read' }) => Promise<FolderHandle>;
     }).showDirectoryPicker;
     if (!picker) return input.current?.click();
-    setLoading('Waiting for folder selection…');
-    setError('');
+    busy.current = true;
+    setChoosingFolder(true);
     let folder: FolderHandle;
     try {
       folder = await picker.call(window, { mode: 'read' });
     } catch (failure) {
-      setLoading('');
       if (!(failure instanceof DOMException && failure.name === 'AbortError')) input.current?.click();
       return;
+    } finally {
+      busy.current = false;
+      setChoosingFolder(false);
     }
-    setLoading('Scanning local folder…');
-    setError('');
-    try {
-      await upload(await walkDirectoryHandle(folder), folder.name);
-    } catch {
-      setLoading('');
-      setError('The selected folder could not be read.');
-    }
+    await runAnalysis('folder', async () => {
+      const files = await walkDirectoryHandle(folder).catch(() => {
+        throw new Error('The selected folder could not be read.');
+      });
+      return upload(files, folder.name);
+    });
   }
 
   function folderChanged(event: ChangeEvent<HTMLInputElement>) {
     const files = event.currentTarget.files;
-    if (!files?.length || loading) return;
+    if (!files?.length || busy.current) return;
     const name = files[0].webkitRelativePath.split('/')[0] || 'Local folder';
     const filtered = filterFileList(files);
     event.currentTarget.value = '';
-    void upload(filtered, name);
+    void runAnalysis('folder', () => upload(filtered, name));
   }
 
   function changeCycle(value: string) {
@@ -255,20 +255,19 @@ export default function App() {
         element?.setAttribute('webkitdirectory', '');
       }} type="file" multiple hidden
         aria-label="Select a local project folder" onChange={folderChanged} />
-      {loading && <div className="notice" role="status">{loading}</div>}
-      {error && <div className="notice error-notice" role="alert">
+      {error && <div className="error-notice" role="alert">
         <span>{error}</span><button type="button" className="quiet-button" onClick={() => setError('')} aria-label="Dismiss error">×</button>
       </div>}
       <div className="workspace-container">
-        <Sidebar inputMode={inputMode} loading={!!loading} onInputMode={setInputMode} onAnalyze={analyzeGithub} onFolder={pickFolder}
+        <Sidebar inputMode={inputMode} loading={!!loading || choosingFolder} onInputMode={setInputMode} onAnalyze={analyzeGithub} onFolder={pickFolder}
           view={view} onView={toggleView} search={query} onSearch={setQuery}
           results={results.slice(0, resultLimit)} moreResults={results.length > resultLimit} onFocus={focus}
-          cycles={graph.analysis.cycles} cycle={cycle} onCycle={changeCycle}
+          cycles={(graph ?? emptyGraph).analysis.cycles} cycle={cycle} onCycle={changeCycle}
           onZoomIn={() => changeZoom(1.25)} onZoomOut={() => changeZoom(0.8)} onFit={() => cyRef.current?.fit(undefined, 28)} />
         <main className="graph-workspace" aria-label={title}>
           <h1 className="sr-only">{title}</h1>
 
-          {!!graph.languageCoverage?.length && <div className="coverage">
+          {!!graph?.languageCoverage?.length && <div className="coverage">
             <details>
               <summary>Language coverage</summary>
               <div className="coverage-body"><ul className="evidence-list">
@@ -280,16 +279,16 @@ export default function App() {
               </ul></div>
             </details>
           </div>}
-          {view === 'functions' && (partial || unavailable) && <div className="coverage">
+          {graph && view === 'functions' && (partial || unavailable) && <div className="coverage">
             <details>
               <summary>{unavailable ? 'Function analysis unavailable' : 'Partial function analysis'}</summary>
-              {functionGraph ? <Coverage key={source.revision} graph={functionGraph} /> : <p>Analyze a repository to load callable data.</p>}
+              {functionGraph ? <Coverage graph={functionGraph} /> : <p>This result contains no callable data.</p>}
             </details>
           </div>}
           {visible.limited && <p className="graph-message" role="status">
             {visible.nodes.length < index.nodes.length
               ? 'Showing ' + visible.nodes.length + ' of ' + index.nodes.length + (view === 'functions' ? ' callables.'
-                : graph.nodes.some(node => node.kind === 'package') ? ' files and packages.' : ' files.')
+                : graph?.nodes.some(node => node.kind === 'package') ? ' files and packages.' : ' files.')
               : 'Some relationships are outside this view.'}
             {' '}Use search or the inspector to keep exploring.
           </p>}
@@ -298,18 +297,19 @@ export default function App() {
           </p>}
 
           <div className="canvas-frame">
-            <Suspense fallback={<div className="layout-status" role="status">Loading graph…</div>}>
+            {loading && <AnalysisLoading message={analysisMessage[loading]} />}
+            {graph && <Suspense fallback={<div className="layout-status" role="status">Loading graph…</div>}>
               <GraphCanvas cyRef={cyRef} nodes={visible.nodes} edges={visible.edges} selection={state.selection}
-                onSelect={select} viewKey={source.revision + ':' + view} />
-            </Suspense>
-            {(view === 'functions' || visible.canExpand) && (
+                onSelect={select} viewKey={'result:' + view} />
+            </Suspense>}
+            {graph && (view === 'functions' || visible.canExpand) && (
               <div className="view-actions">
                 {view === 'functions' && <button type="button" className="quiet-button" onClick={() => switchView('files')}>Back to files</button>}
                 {visible.canExpand && <button type="button" className="quiet-button"
                   onClick={() => setState(previous => ({ ...previous, depth: previous.depth + 1 }))}>Expand neighborhood</button>}
               </div>
             )}
-            {!visible.nodes.length && <div className="graph-empty" role="status">{noGraph}</div>}
+            {graph && !visible.nodes.length && <div className="graph-empty" role="status">{noGraph}</div>}
           </div>
         </main>
         <FileInspector view={view} index={index} selection={state.selection} unresolved={unresolved}
@@ -326,6 +326,19 @@ export default function App() {
     const cy = cyRef.current;
     if (cy) cy.zoom({ level: cy.zoom() * factor, renderedPosition: { x: cy.width() / 2, y: cy.height() / 2 } });
   }
+}
+
+function AnalysisLoading({ message }: { message: string }) {
+  return (
+    <div className="analysis-loading" role="status">
+      <span className="sr-only">{message}</span>
+      <span aria-hidden="true">
+        {Array.from(message, (letter, index) => (
+          <span key={index} style={{ animationDelay: index * 32 + 'ms' }}>{letter}</span>
+        ))}
+      </span>
+    </div>
+  );
 }
 
 function Coverage({ graph }: { graph: NonNullable<GraphData['functionGraph']> }) {
